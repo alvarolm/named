@@ -1,0 +1,258 @@
+package main
+
+import (
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+	"unsafe"
+)
+
+// --- with reflection ---
+
+type Field[T any] struct {
+	name  *string // goes first so it's aligned with fildHeader
+	Value T
+}
+
+func (f *Field[T]) Name() string {
+	if f.name == nil {
+		return ""
+	}
+	return *f.name
+}
+
+// fieldHeader matches the memory layout of the beginning of your Field[T].
+type fieldHeader struct {
+	name *string
+}
+
+func (f *Field[T]) BindName(n *string) { f.name = n }
+
+type NameBinder interface{ BindName(namePtr *string) }
+
+var schemaCache = sync.Map{}
+
+func Link(s interface{}) {
+	vVal := reflect.ValueOf(s).Elem()
+	tVal := vVal.Type()
+
+	// get cached schema or build it
+
+	var tagPtrs []*string
+	if cached, ok := schemaCache.Load(tVal); ok {
+		tagPtrs = cached.([]*string)
+	} else {
+		tagPtrs = make([]*string, tVal.NumField())
+		for i := 0; i < tVal.NumField(); i++ {
+			n := tVal.Field(i).Tag.Get("json")
+			tagPtrs[i] = &n
+		}
+		schemaCache.Store(tVal, tagPtrs)
+	}
+
+	// assign names
+
+	for i := 0; i < vVal.NumField(); i++ {
+		field := vVal.Field(i)
+		// Skip unexported fields
+		if !field.CanInterface() {
+			continue
+		}
+		if binder, ok := field.Addr().Interface().(NameBinder); ok {
+			binder.BindName(tagPtrs[i])
+		}
+	}
+}
+
+type ReflectStruct struct {
+	A Field[int] `json:"a"`
+	B Field[int] `json:"b"`
+	C Field[int] `json:"c"`
+	D Field[int] `json:"d"`
+}
+
+// --- manual ---
+var (
+	strA = "a"
+	strB = "b"
+	strC = "c"
+	strD = "d"
+)
+
+type ManualStruct struct {
+	A Field[int]
+	B Field[int]
+	C Field[int]
+	D Field[int]
+}
+
+func NewManualStruct() ManualStruct {
+	return ManualStruct{
+		A: Field[int]{name: &strA},
+		B: Field[int]{name: &strB},
+		C: Field[int]{name: &strC},
+		D: Field[int]{name: &strD},
+	}
+}
+
+/*
+func BenchmarkReflection(b *testing.B) {
+	// Warm up cache
+	x := ReflectStruct{}
+	Link(&x)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := ReflectStruct{} // Create
+		Link(&s)             // Inject Metadata
+	}
+}
+*/
+
+func BenchmarkManual(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_ = NewManualStruct() // Create and Assign
+	}
+}
+
+// --- unsafe ---
+
+type schema struct {
+	tagPtrs []*string
+	offsets []uintptr
+}
+
+var genericSchemaCache = sync.Map{}
+
+func LinkUnsafe[T any](s *T) {
+	ptr := unsafe.Pointer(s)
+
+	var zero T
+	tVal := reflect.TypeOf(zero)
+
+	// get cached schema or build it
+	var sch *schema
+	if cached, ok := genericSchemaCache.Load(tVal); ok {
+		sch = cached.(*schema)
+	} else {
+		// first pass: find fields matching the fieldHeader layout
+		var matchingIndices []int
+		stringPtrType := reflect.TypeOf((*string)(nil))
+
+		for i := 0; i < tVal.NumField(); i++ {
+			field := tVal.Field(i)
+
+			// check for matching layout
+			if field.Type.Kind() == reflect.Struct && field.Type.NumField() > 0 {
+				firstField := field.Type.Field(0)
+				if firstField.Type == stringPtrType && firstField.Name == "name" {
+					matchingIndices = append(matchingIndices, i)
+				}
+			}
+		}
+
+		// build schema for matching fields
+		sch = &schema{
+			tagPtrs: make([]*string, len(matchingIndices)),
+			offsets: make([]uintptr, len(matchingIndices)),
+		}
+
+		for idx, i := range matchingIndices {
+			field := tVal.Field(i)
+			n := strings.Split(field.Tag.Get("json"), ",")[0]
+			if n == "" {
+				n = field.Name
+			}
+			sch.tagPtrs[idx] = &n
+			sch.offsets[idx] = field.Offset
+		}
+		genericSchemaCache.Store(tVal, sch)
+	}
+
+	for i := 0; i < len(sch.offsets); i++ {
+		fieldPtr := unsafe.Pointer(uintptr(ptr) + sch.offsets[i])
+		(*fieldHeader)(fieldPtr).name = sch.tagPtrs[i]
+	}
+}
+
+// --- Optimized Approach 2: Type-specific with zero reflection ---
+
+var (
+	reflectStructSchema *schema
+	reflectStructOnce   sync.Once
+)
+
+func LinkOptimized(s *ReflectStruct) {
+	// Build schema once, zero reflection after that
+	reflectStructOnce.Do(func() {
+		var zero ReflectStruct
+		tVal := reflect.TypeOf(zero)
+		reflectStructSchema = &schema{
+			tagPtrs: make([]*string, tVal.NumField()),
+			offsets: make([]uintptr, tVal.NumField()),
+		}
+		for i := 0; i < tVal.NumField(); i++ {
+			n := tVal.Field(i).Tag.Get("json")
+			reflectStructSchema.tagPtrs[i] = &n
+			reflectStructSchema.offsets[i] = tVal.Field(i).Offset
+		}
+	})
+
+	// fieldHeader matches the memory layout of the beginning of your Field[T].
+	// This is safer than casting to Field[int] for a Field[string].
+	type fieldHeader struct {
+		name *string
+	}
+
+	ptr := unsafe.Pointer(s)
+	for i := 0; i < len(reflectStructSchema.offsets); i++ {
+		fieldPtr := unsafe.Pointer(uintptr(ptr) + reflectStructSchema.offsets[i])
+		//(*Field[int])(fieldPtr).name = reflectStructSchema.tagPtrs[i]
+		(*fieldHeader)(fieldPtr).name = reflectStructSchema.tagPtrs[i]
+	}
+}
+
+func TestUnsafeLink(t *testing.T) {
+	s := ReflectStruct{}
+	LinkUnsafe(&s)
+
+	if s.A.name == nil || *s.A.name != "a" {
+		t.Errorf("Expected s.A.name to be 'a', got %v", s.A.name)
+	}
+	if s.B.name == nil || *s.B.name != "b" {
+		t.Errorf("Expected s.B.name to be 'b', got %v", s.B.name)
+	}
+	if s.C.name == nil || *s.C.name != "c" {
+		t.Errorf("Expected s.C.name to be 'c', got %v", s.C.name)
+	}
+	if s.D.name == nil || *s.D.name != "d" {
+		t.Errorf("Expected s.D.name to be 'd', got %v", s.D.name)
+	}
+}
+
+func BenchmarkGeneric(b *testing.B) {
+	// Warm up cache
+	x := ReflectStruct{}
+	LinkUnsafe(&x)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := ReflectStruct{}
+		LinkUnsafe(&s)
+	}
+}
+
+/*
+func BenchmarkOptimized(b *testing.B) {
+	// Warm up cache
+	x := ReflectStruct{}
+	LinkOptimized(&x)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := ReflectStruct{}
+		LinkOptimized(&s)
+	}
+}
+*/

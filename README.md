@@ -52,7 +52,7 @@ BenchmarkManual-8               1000000000               0.2411 ns/op          0
 note: 
     manual is just the baseline where each name reference is manually assigned.
 
-compared to "manual" of course its magnitudes slower, none the less I saw room for improvement: the only issue is that I used unsafe which is not recommended but saw it as acceptable, as its used to calculate the pointer of each field from their offset, and also cast *Field into a custom struct (named fieldHeader) pointer that matched the memory layout just to directly assign the string pointer to the name field.
+compared to "manual" of course its magnitudes slower, nonetheless I saw room for improvement: the only issue is that I used unsafe which is not recommended but saw it as acceptable, as its used to calculate the pointer of each field from their offset, and also cast *Field into a custom struct (named fieldHeader) pointer that matched the memory layout just to directly assign the string pointer to the name field.
 
 considerations from unsafe use:
 
@@ -66,7 +66,7 @@ goos: linux
 goarch: amd64
 pkg: namedtest
 cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
-BenchmarkGeneric-8      69204219                15.69 ns/op            0 B/op          0 allocs/op
+BenchmarkUnsafe-8      69204219                15.69 ns/op            0 B/op          0 allocs/op
 BenchmarkManual-8       1000000000               0.2431 ns/op          0 B/op          0 allocs/op
 ```
 

@@ -145,30 +145,33 @@ Output: email
 
 <details>
 <summary>generate-named options</summary>
+	
+```bash
+Usage: generate-named [flags] [path...]
 
-	Usage: generate-named [flags] [path...]
-	
-	Generates type-safe field name accessors for Go structs.
-	
-	Flags:
-	  -clean
-	    	remove all generated *_named_generated.go files
-	  -v	verbose mode: show detailed processing information
-	  -verbose
-	    	verbose mode: show detailed processing information
-	
-	Arguments:
-	  path    File or directory to process (default: current directory)
-	
-	Examples:
-	  generate-named                    # Process current directory
-	  generate-named -v                 # Process with verbose output
-	  generate-named -clean             # Remove all generated files
-	  generate-named ./pkg              # Process specific directory
-	  generate-named file.go            # Process specific file
-	
-	For each struct with a GENERATE-NAMED directive, creates a *_named_generated.go file
-	with methods to access field names based on struct tags.
+Generates type-safe field name accessors for Go structs.
+
+Flags:
+  -clean
+		remove all generated *_named_generated.go files
+  -v	verbose mode: show detailed processing information
+  -verbose
+		verbose mode: show detailed processing information
+
+Arguments:
+  path    File or directory to process (default: current directory)
+
+Examples:
+  generate-named                    # Process current directory
+  generate-named -v                 # Process with verbose output
+  generate-named -clean             # Remove all generated files
+  generate-named ./pkg              # Process specific directory
+  generate-named file.go            # Process specific file
+
+For each struct with a GENERATE-NAMED directive, creates a *_named_generated.go file
+with methods to access field names based on struct tags.
+```
+
 </details>
 
 ## which should you use ?

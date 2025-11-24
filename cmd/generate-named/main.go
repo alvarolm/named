@@ -65,7 +65,7 @@ func walkGoPackages(root string, fn func(string) error) error {
 	}
 
 	// Skip hidden directories
-	if strings.HasPrefix(filepath.Base(root), ".") {
+	if root != "." && strings.HasPrefix(filepath.Base(root), ".") {
 		logVerbose("Skipping hidden directory: %s", root)
 		return nil
 	}

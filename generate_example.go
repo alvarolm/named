@@ -1,12 +1,18 @@
 package named
 
-// Struct definitions
+// go generate directive:
+//
+//go:generate generate-named .
 
+// generate-named directives:
+// (these directives can be in any file)
+//
 // GENERATE-NAMED=StructName:TestStruct,TagKey:json
 // GENERATE-NAMED=StructName:Person,TagKey:json
 // GENERATE-NAMED=StructName:User,TagKey:db
 // GENERATE-NAMED=StructName:Product,TagKey:json
-// These directives can be in any file.
+
+// Struct definitions
 
 type TestStruct struct {
 	Field1 string `json:"field1"`

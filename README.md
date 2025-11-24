@@ -2,7 +2,7 @@
 
 Retrieve struct field names easily!
 
-In Go, structs are commonly used to represent structured data that is directly encoded into popular formats like JSON, YAML and others, these formats have field names that are easy to set but a challenge to easily retrieve them.
+In Go, structs are commonly used to represent structured data that is directly encoded into popular formats like JSON, YAML and others, these formats have field names that are easy to set but a challenge to retrieve them.
 
 I could not find a way to do this that was also:
 

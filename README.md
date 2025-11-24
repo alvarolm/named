@@ -97,9 +97,8 @@ Output: a
 ```
 Field is compatible with:
 
-- compatible with json encoding, you can also write your custom encoder embedding the Field struct. see https://pkg.go.dev/github.com/alvarolm/named#Field
-- the omitzero option from the json spec (https://pkg.go.dev/encoding/json) as it implements the IsZero() bool method.
-
+- with json encoding, you can also write your custom encoder embedding the Field struct. see https://pkg.go.dev/github.com/alvarolm/named#Field
+- the omitzero option from the json tag options (https://pkg.go.dev/encoding/json) as it implements the IsZero() bool method.
 
 ## post processing solution:
     

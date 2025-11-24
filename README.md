@@ -90,7 +90,7 @@ type ExampleStruct struct {
 // x := &ExampleStruct{Field[int]{Value: 10}}
 named.Link(&s, "json")
 ```
-3) retrieve the name with the Name method
+3) retrieve the field name with the Name method
 ```go
 fmt.Println(x.A.Name())
 Output: a

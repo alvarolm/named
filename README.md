@@ -86,6 +86,50 @@ To resolve B:
 
 There is not much to think, the generated code would come at the expense of a few ns at most.
 
+### To use:
+
+1) install
+```bash
+go install github.com/alvarolm/named/cmd/generate-named@latest
+```
+
+2) add the named directives
+```go
+// GENERATE-NAMED=StructName:Person,TagKey:json
+```
+these can go anywere as long as they are in the same directory of the structs
+
+3) add the go generate directives:
+```go
+//go:generate generate-named .
+```
+just once.
+these are the generate-named options:
+
+	Usage: generate-named [flags] [path...]
+	
+	Generates type-safe field name accessors for Go structs.
+	
+	Flags:
+	  -clean
+	    	remove all generated *_named_generated.go files
+	  -v	verbose mode: show detailed processing information
+	  -verbose
+	    	verbose mode: show detailed processing information
+	
+	Arguments:
+	  path    File or directory to process (default: current directory)
+	
+	Examples:
+	  generate-named                    # Process current directory
+	  generate-named -v                 # Process with verbose output
+	  generate-named -clean             # Remove all generated files
+	  generate-named ./pkg              # Process specific directory
+	  generate-named file.go            # Process specific file
+	
+	For each struct with a GENERATE-NAMED directive, creates a *_named_generated.go file
+	with methods to access field names based on struct tags.
+
 
 ## which should you use ?
 

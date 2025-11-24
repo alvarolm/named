@@ -1,3 +1,5 @@
+[![GoDoc](https://godoc.org/github.com/username/repo?status.svg)](https://godoc.org/github.com/alvarolm/named)
+
 # named
 
 Retrieve struct field names easily!
@@ -72,6 +74,33 @@ I think this is an acceptable trade off, for my case this is good enough to hand
 
 **[old-benchmarks](/old_bench_test.go.txt)**
 
+### Usage:
+
+1) implement the Field struct as field value in your structs:
+```go
+type ExampleStruct struct {
+	A Field[int]     `json:"a"`		// field name: "a"
+	J Field[int]     				// field name: "J", uses raw field name if no tag name is present
+	L Field[int]     `json:"-"` 	// field name: none, if the name is "-", the name is skipped
+	m Field[any]     				// field name: none, field is unexported (starts with lower case) so its skipped
+}
+```
+2) call Link on the struct pointer (once)
+```go
+x := &ExampleStruct{Field[int]{Value: 10}}
+named.Link(&s, "json")
+```
+3) retrieve the name with the Name method
+```go
+fmt.Println(x.A.Name())
+Output: a
+```
+Field is compatible with:
+
+- compatible with json encoding, you can also write your custom encoder embedding the Field struct. see https://pkg.go.dev/github.com/alvarolm/named#Field
+- the omitzero option from the json spec (https://pkg.go.dev/encoding/json) as it implements the IsZero() bool method.
+
+
 ## post processing solution:
     
 Generating go code.
@@ -86,7 +115,7 @@ To resolve B:
 
 There is not much to think, the generated code would come at the expense of a few ns at most.
 
-### To use:
+### Usage:
 
 1) install
 ```bash

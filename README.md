@@ -87,7 +87,7 @@ type ExampleStruct struct {
 ```
 2) call Link on the struct pointer (once)
 ```go
-x := &ExampleStruct{Field[int]{Value: 10}}
+// x := &ExampleStruct{Field[int]{Value: 10}}
 named.Link(&s, "json")
 ```
 3) retrieve the name with the Name method
@@ -95,6 +95,8 @@ named.Link(&s, "json")
 fmt.Println(x.A.Name())
 Output: a
 ```
+[example](/linker_test.go)
+
 Field is compatible with:
 
 - with json encoding, you can also write your custom encoder embedding the Field struct. see https://pkg.go.dev/github.com/alvarolm/named#Field
@@ -132,7 +134,17 @@ these can go anywere as long as they are in the same directory of the structs
 //go:generate generate-named .
 ```
 just once.
-these are the generate-named options:
+
+4) call the generated field method
+```go
+// v:=&Person{}
+fmt.Println(PersonNamed.Email())
+Output: email
+```
+[example](/generate_example.go)
+
+<details>
+<summary>generate-named options</summary>
 
 	Usage: generate-named [flags] [path...]
 	
@@ -157,7 +169,7 @@ these are the generate-named options:
 	
 	For each struct with a GENERATE-NAMED directive, creates a *_named_generated.go file
 	with methods to access field names based on struct tags.
-
+</details>
 
 ## which should you use ?
 

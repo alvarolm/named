@@ -184,3 +184,4 @@ Use the post processing solution if:
 - performance is critical
 - want to avoid the use of the unsafe package
 - dont mind the extra build step
+- must not alter existing structs

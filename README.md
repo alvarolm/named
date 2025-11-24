@@ -179,8 +179,9 @@ with methods to access field names based on struct tags.
 it depends on your needs.
 
 Use the runtime solution if:
-- understand the limitations of the Field struct.
-- want to avoid the hassle of an extra build step.
+- you are willing to fundamentally change how the existing structs retrive and set values
+- understand the limitations of the Field struct
+- want to avoid the hassle of an extra build step
 - dont mind the extra overhead (grows with number of fields)
 
 Use the post processing solution if:

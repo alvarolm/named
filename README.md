@@ -129,7 +129,7 @@ go install github.com/alvarolm/named/cmd/generate-named@latest
 ```
 these can go anywere as long as they are in the same directory of the structs
 
-3) add the go generate directives:
+3) add the go generate directive
 ```go
 //go:generate generate-named .
 ```

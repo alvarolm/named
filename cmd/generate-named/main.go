@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"flag"
 	"fmt"
@@ -222,16 +223,15 @@ func processDir(dir string) error {
 		return err
 	}
 
-	type parsedFile struct {
-		path string
-		node *ast.File
+	type scanResult struct {
+		path             string
+		directiveStructs map[string]string
+		fileStructs      []string
+		err              error
 	}
 
-	var parsedFiles []parsedFile
-	globalDirectives := make(map[string]string)
-	fset := token.NewFileSet()
-
-	// Parse each file once, collecting directives and AST nodes
+	// Phase 1: Parallel scan to extract directives and struct names
+	var goFiles []string
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") {
 			continue
@@ -239,21 +239,64 @@ func processDir(dir string) error {
 		if strings.HasSuffix(entry.Name(), testFileSuffix) || strings.HasSuffix(entry.Name(), generatedFileSuffix) {
 			continue
 		}
+		goFiles = append(goFiles, filepath.Join(dir, entry.Name()))
+	}
 
-		fullPath := filepath.Join(dir, entry.Name())
-		logVerbose("Parsing file: %s", fullPath)
-		node, err := parser.ParseFile(fset, fullPath, nil, parser.ParseComments)
-		if err != nil {
-			return fmt.Errorf("error parsing %s: %v", fullPath, err)
+	// Early exit if no go files
+	if len(goFiles) == 0 {
+		logVerbose("No Go files found in %s", dir)
+		return nil
+	}
+
+	// Scan all files in parallel
+	results := make(chan scanResult, len(goFiles))
+	for _, filePath := range goFiles {
+		go func(path string) {
+			// Open file once and scan in a single pass
+			f, err := os.Open(path)
+			if err != nil {
+				results <- scanResult{
+					path: path,
+					err:  err,
+				}
+				return
+			}
+			defer f.Close()
+
+			scanner := bufio.NewScanner(f)
+			directiveStructs := make(map[string]string)
+			var fileStructs []string
+
+			// Single pass: extract both directives and struct names
+			for scanner.Scan() {
+				line := scanner.Bytes()
+
+				extractDirectiveFromLine(line, directiveStructs)
+				extractStructNameFromLine(line, &fileStructs)
+			}
+
+			results <- scanResult{
+				path:             path,
+				directiveStructs: directiveStructs,
+				fileStructs:      fileStructs,
+				err:              scanner.Err(),
+			}
+		}(filePath)
+	}
+
+	// Collect results and build global directives
+	var allResults []scanResult
+	globalDirectives := make(map[string]string)
+
+	for i := 0; i < len(goFiles); i++ {
+		result := <-results
+		if result.err != nil {
+			return fmt.Errorf("error scanning %s: %v", result.path, result.err)
 		}
 
-		// Collect directives from this file
-		fileDirectives := parseGenerateComments(node)
-		if len(fileDirectives) > 0 {
-			logVerbose("Found %d directive(s) in %s", len(fileDirectives), entry.Name())
-		}
-		for structName, tagKey := range fileDirectives {
-			logVerbose("  - %s (TagKey: %s)", structName, tagKey)
+		// Build global directives map as results arrive
+		for structName, tagKey := range result.directiveStructs {
+			logVerbose("Found directive in %s: %s (TagKey: %s)", filepath.Base(result.path), structName, tagKey)
 			// Check for conflicting directives
 			if existingTagKey, exists := globalDirectives[structName]; exists {
 				if existingTagKey != tagKey {
@@ -266,23 +309,59 @@ func processDir(dir string) error {
 			globalDirectives[structName] = tagKey
 		}
 
-		// Store parsed file for struct extraction
-		parsedFiles = append(parsedFiles, parsedFile{
-			path: fullPath,
-			node: node,
-		})
+		allResults = append(allResults, result)
 	}
 
-	// Process parsed files to find structs and generate code
-	logVerbose("Processing %d parsed file(s) to find structs", len(parsedFiles))
-	for _, pf := range parsedFiles {
-		structs := findAnnotatedStructs(pf.node, globalDirectives)
+	// Early exit if no directives found
+	if len(globalDirectives) == 0 {
+		logVerbose("No directives found in %s", dir)
+		return nil
+	}
+
+	// Filter files that contain structs matching the directives
+	var candidateFiles []string
+	for _, result := range allResults {
+		hasMatch := false
+		for _, structName := range result.fileStructs {
+			if _, exists := globalDirectives[structName]; exists {
+				logVerbose("Found matching struct in %s: %s", filepath.Base(result.path), structName)
+				hasMatch = true
+				break
+			}
+		}
+		if hasMatch {
+			candidateFiles = append(candidateFiles, result.path)
+		} else if len(result.fileStructs) > 0 {
+			logVerbose("Skipping %s (no matching structs)", filepath.Base(result.path))
+		}
+	}
+
+	// Early exit if no candidates found
+	if len(candidateFiles) == 0 {
+		logVerbose("No files with matching structs found in %s", dir)
+		return nil
+	}
+
+	// Phase 2: Parse and process candidate files immediately
+	fset := token.NewFileSet()
+
+	for _, fullPath := range candidateFiles {
+		logVerbose("Parsing file: %s", filepath.Base(fullPath))
+
+		// Parse with optimization flag to skip type resolution
+		node, err := parser.ParseFile(fset, fullPath, nil, parser.ParseComments|parser.SkipObjectResolution)
+		if err != nil {
+			return fmt.Errorf("error parsing %s: %v", fullPath, err)
+		}
+
+		// Immediately process parsed file to find structs and generate code
+		structs := findAnnotatedStructs(node, globalDirectives)
 		if len(structs) > 0 {
-			logVerbose("Found %d struct(s) in %s", len(structs), filepath.Base(pf.path))
+			logVerbose("Found %d struct(s) in %s", len(structs), filepath.Base(fullPath))
 			for _, s := range structs {
 				logVerbose("  - %s (%d fields)", s.name, len(s.fields))
 			}
-			if err := generateCode(pf.path, structs); err != nil {
+			if err := generateCode(fullPath, structs); err != nil {
 				return err
 			}
 		}
@@ -291,9 +370,58 @@ func processDir(dir string) error {
 	return nil
 }
 
+// extractDirectiveFromLine checks if a line contains a GENERATE-NAMED directive
+// and adds it to the result map if found
+func extractDirectiveFromLine(line []byte, result map[string]string) {
+	if bytes.Contains(line, ([]byte)(directivePrefix)) {
+		// Extract the directive text
+		text := bytes.TrimSpace(line)
+		// Remove comment prefix if present
+		text = bytes.TrimSpace(bytes.TrimPrefix(text, []byte("//")))
+
+		if bytes.HasPrefix(text, ([]byte)(directivePrefix)) {
+			{
+				structName, tagKey := parseStructDirective((string)(text))
+				if structName != "" {
+					result[structName] = tagKey
+				}
+			}
+		}
+	}
+}
+
+// extractStructNameFromLine checks if a line contains a struct definition
+// and appends the struct name to result if found
+func extractStructNameFromLine(line []byte, result *[]string) {
+	line = bytes.TrimSpace(line)
+
+	// Look for pattern: type <name> struct
+	// Handle both regular and generic structs
+	if bytes.HasPrefix(line, []byte("type ")) && bytes.Contains(line, []byte(" struct")) {
+		// Extract the struct name
+		// Pattern: "type Name struct" or "type Name[T any] struct"
+		parts := bytes.Fields(line)
+		if len(parts) >= 3 {
+			// parts[0] = "type"
+			// parts[1] = struct name (possibly with generics like "Name[T")
+			structName := parts[1]
+
+			// Handle generic structs: extract name before '['
+			if idx := bytes.Index(structName, []byte("[")); idx != -1 {
+				structName = structName[:idx]
+			}
+
+			// Verify it's a valid Go identifier and exported
+			if len(structName) > 0 && structName[0] >= 'A' && structName[0] <= 'Z' {
+				*result = append(*result, (string)(structName))
+			}
+		}
+	}
+}
+
 func processFile(filename string, globalDirectives map[string]string) error {
 	fset := token.NewFileSet()
-	node, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+	node, err := parser.ParseFile(fset, filename, nil, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		return err
 	}
@@ -387,14 +515,8 @@ func findAnnotatedStructs(file *ast.File, structTagKeys map[string]string) []str
 func parseGenerateComments(file *ast.File) map[string]string {
 	result := make(map[string]string)
 
-	// Collect all comment groups
-	var allComments []*ast.CommentGroup
-	for _, cg := range file.Comments {
-		allComments = append(allComments, cg)
-	}
-
 	// Parse each comment
-	for _, commentGroup := range allComments {
+	for _, commentGroup := range file.Comments {
 		for _, comment := range commentGroup.List {
 			text := strings.TrimSpace(strings.TrimPrefix(comment.Text, "//"))
 

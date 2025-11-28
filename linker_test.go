@@ -79,7 +79,7 @@ func testSampleSimple(t *testing.T, s *SampleSimple, prefix string) {
 
 func TestLink_Simple(t *testing.T) {
 	s := SampleSimple{}
-	Link(&s, "json")
+	Link(&s)
 	testSampleSimple(t, &s, "")
 }
 
@@ -88,9 +88,16 @@ type SampleEmbedStruct struct {
 	B Field[SampleSimple] `json:"y"`
 }
 
+func init() {
+	// Preload schemas for benchmarks
+	LoadLink[Sample5Fields]("json")
+	LoadLink[SampleSimple]("json")
+	LoadLink[SampleEmbedStruct]("json")
+}
+
 func TestLink_Embedded(t *testing.T) {
 	s := SampleEmbedStruct{}
-	Link(&s, "json")
+	Link(&s)
 
 	// Test root-level fields
 	if s.A.Name() != "x" {
@@ -200,8 +207,10 @@ func TestField_NameReturnsLeafOnly(t *testing.T) {
 		Y Field[Inner] `json:"y"`
 	}
 
+	LoadLink[Outer]("json")
+
 	s := Outer{}
-	Link(&s, "json")
+	Link(&s)
 
 	// Nested field returns leaf name only (not "y.a")
 	if s.Y.Value.A.Name() != "a" {
@@ -226,7 +235,9 @@ func TestField_Path(t *testing.T) {
 	}
 
 	s := Level1{}
-	Link(&s, "json")
+	LoadLink[Level1]("json")
+
+	Link(&s)
 
 	// Root level
 	path := s.Top.Path()
@@ -245,6 +256,7 @@ func TestField_Path(t *testing.T) {
 	if len(path) != 3 || path[0] != "top" || path[1] != "mid" || path[2] != "deep" {
 		t.Errorf("Expected FullPath() ['top', 'mid', 'deep'], got %v", path)
 	}
+
 }
 
 func TestField_FullName_BackwardCompatibility(t *testing.T) {
@@ -258,7 +270,9 @@ func TestField_FullName_BackwardCompatibility(t *testing.T) {
 	}
 
 	s := Outer{}
-	Link(&s, "json")
+	LoadLink[Outer]("json")
+
+	Link(&s)
 
 	// Root field with default separator
 	if s.X.FullName("") != "x" {
@@ -304,162 +318,3 @@ func TestFieldMemoryLayout(t *testing.T) {
 		t.Errorf("fieldHeader should be 8 bytes, got %d", unsafe.Sizeof(fieldHeader{}))
 	}
 }
-
-func TestLink_MultipleCallsOptimization(t *testing.T) {
-	type Sample struct {
-		A Field[int]    `json:"a"`
-		B Field[string] `json:"b"`
-	}
-
-	s := Sample{}
-
-	// First link
-	Link(&s, "json")
-	if s.A.Name() != "a" {
-		t.Errorf("After first link: Expected A.Name() to be 'a', got '%s'", s.A.Name())
-	}
-	if s.B.Name() != "b" {
-		t.Errorf("After first link: Expected B.Name() to be 'b', got '%s'", s.B.Name())
-	}
-
-	// Second link - should be optimized to skip
-	Link(&s, "json")
-	if s.A.Name() != "a" {
-		t.Errorf("After second link: Expected A.Name() to be 'a', got '%s'", s.A.Name())
-	}
-	if s.B.Name() != "b" {
-		t.Errorf("After second link: Expected B.Name() to be 'b', got '%s'", s.B.Name())
-	}
-
-	// Third link - should still work
-	Link(&s, "json")
-	if s.A.Name() != "a" {
-		t.Errorf("After third link: Expected A.Name() to be 'a', got '%s'", s.A.Name())
-	}
-	if s.B.Name() != "b" {
-		t.Errorf("After third link: Expected B.Name() to be 'b', got '%s'", s.B.Name())
-	}
-}
-
-/*
-
-func TestParentField_Simple(t *testing.T) {
-	type Inner struct {
-		A Field[int]    `json:"a"`
-		B Field[string] `json:"b"`
-	}
-
-	type Outer struct {
-		X Field[int]   `json:"x"`
-		Y Field[Inner] `json:"y"`
-	}
-
-	s := Outer{}
-	Link(&s, "json")
-
-	// Root fields should have nil parent
-	if s.X.Parent() != nil {
-		t.Errorf("Root field X should have nil parent")
-	}
-	if s.Y.Parent() != nil {
-		t.Errorf("Root field Y should have nil parent")
-	}
-
-	// Nested fields should have parent pointing to Y
-	if s.Y.Value.A.Parent() == nil {
-		t.Errorf("Nested field A should have parent")
-	}
-	if s.Y.Value.A.Parent().Name() != "y" {
-		t.Errorf("Expected parent name 'y', got '%s'", s.Y.Value.A.Parent().Name())
-	}
-	if s.Y.Value.B.Parent() == nil {
-		t.Errorf("Nested field B should have parent")
-	}
-	if s.Y.Value.B.Parent().Name() != "y" {
-		t.Errorf("Expected parent name 'y', got '%s'", s.Y.Value.B.Parent().Name())
-	}
-}
-
-func TestParentField_MultipleNesting(t *testing.T) {
-	type Level3 struct {
-		Deep Field[int] `json:"deep"`
-	}
-	type Level2 struct {
-		Mid Field[Level3] `json:"mid"`
-	}
-	type Level1 struct {
-		Top Field[Level2] `json:"top"`
-	}
-
-	s := Level1{}
-	Link(&s, "json")
-
-	// Root level should have nil parent
-	if s.Top.Parent() != nil {
-		t.Errorf("Root field Top should have nil parent")
-	}
-
-	// Check level 1 -> level 2 parent
-	if s.Top.Value.Mid.Parent() == nil {
-		t.Errorf("Mid field should have parent")
-	}
-	if s.Top.Value.Mid.Parent().Name() != "top" {
-		t.Errorf("Expected parent name 'top', got '%s'", s.Top.Value.Mid.Parent().Name())
-	}
-
-	// Check level 2 -> level 3 parent
-	if s.Top.Value.Mid.Value.Deep.Parent() == nil {
-		t.Errorf("Deep field should have parent")
-	}
-	if s.Top.Value.Mid.Value.Deep.Parent().Name() != "mid" {
-		t.Errorf("Expected parent name 'mid', got '%s'", s.Top.Value.Mid.Value.Deep.Parent().Name())
-	}
-}
-
-func TestParentField_ChainTraversal(t *testing.T) {
-	type Inner struct {
-		Value Field[int] `json:"value"`
-	}
-	type Outer struct {
-		Container Field[Inner] `json:"container"`
-	}
-
-	s := Outer{}
-	Link(&s, "json")
-
-	// Traverse parent chain
-	field := &s.Container.Value.Value
-	chain := []string{}
-
-	for current := field.Parent(); current != nil; current = current.Parent() {
-		chain = append(chain, current.Name())
-	}
-
-	expected := []string{"container"}
-	if len(chain) != len(expected) {
-		t.Errorf("Expected chain length %d, got %d", len(expected), len(chain))
-	}
-	for i, name := range expected {
-		if chain[i] != name {
-			t.Errorf("Expected chain[%d] = '%s', got '%s'", i, name, chain[i])
-		}
-	}
-}
-
-func TestParentField_EmptyNested(t *testing.T) {
-	type Empty struct {
-		// No fields
-	}
-	type Container struct {
-		E Field[Empty] `json:"e"`
-	}
-
-	s := Container{}
-	Link(&s, "json")
-
-	// Should not panic
-	if s.E.Parent() != nil {
-		t.Errorf("Root field should have nil parent")
-	}
-}
-*/

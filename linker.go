@@ -2,9 +2,9 @@ package named
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
-	"sync"
 	"unsafe"
 )
 
@@ -113,32 +113,70 @@ type schema struct {
 	TagKey string
 }
 
-var genericSchemaCache = sync.Map{}
+var cachedSchemaMap = make(map[uintptr]*schema)
 
 // fieldHeader matches initial memory layout Field
 type fieldHeader struct {
 	path *[]string
 }
 
-func Link[T any](s *T, tagKey string) {
-	ptr := unsafe.Pointer(s)
+// emptyInterface mimics the internal memory layout of a Go empty interface (any).
+// In the standard Go runtime, an interface is a pair of pointers: {type, data}.
+//
+// By casting a pointer to an interface variable to (*emptyInterface), we can
+// directly access the underlying type pointer to use as a unique hash key.
+type emptyInterface struct {
+	typ unsafe.Pointer
+	ptr unsafe.Pointer
+}
 
+// LoadLink generates and loads the schema for type T using the specified tagKey.
+// The generated schema is cached for future Link calls. T must be a struct type.
+// not async safe, should be called before any Link calls.
+func LoadLink[T any](tagKey string) error {
 	var zero T
 	tVal := reflect.TypeOf(zero)
 
-	// get cached schema or build it
+	if tVal.Kind() != reflect.Struct {
+		return errors.New("CacheSchema: T must be a struct type")
+	}
+
+	// Get type ID for fast lookup
+	var gen any = zero
+	typeID := uintptr((*emptyInterface)(unsafe.Pointer(&gen)).typ)
+
+	// Build schema
 	var sch *schema
-	if cached, ok := genericSchemaCache.Load(tVal); ok {
-		sch = cached.(*schema)
-	} else {
-
-		if tVal.Kind() != reflect.Struct {
-			return
+	{
+		var fields []fieldInfo
+		collectFields(tVal, tagKey, 0, nil, &fields)
+		sch = &schema{
+			fields: fields,
+			TagKey: tagKey,
 		}
+	}
 
-		sch = buildSchema(tVal, tagKey)
-		genericSchemaCache.Store(tVal, sch)
+	// Cache schema
+	cachedSchemaMap[typeID] = sch
 
+	return nil
+}
+
+// Link populates all Field[T] fields in the struct pointed to by s with their path information.
+// T must be a struct type previously registered with LoadLink.
+// returns true if linking was successful, false otherwise.
+func Link[T any](s *T) bool {
+
+	ptr := unsafe.Pointer(s)
+
+	var zero T
+	var gen any = zero
+	typeID := uintptr((*emptyInterface)(unsafe.Pointer(&gen)).typ)
+
+	// load from cache
+	sch, ok := cachedSchemaMap[typeID]
+	if !ok {
+		return false
 	}
 
 	// Note:
@@ -149,15 +187,7 @@ func Link[T any](s *T, tagKey string) {
 		(*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset)).path = field.pathPtr
 	}
 
-}
-
-func buildSchema(tVal reflect.Type, tagKey string) *schema {
-	var fields []fieldInfo
-	collectFields(tVal, tagKey, 0, nil, &fields)
-	return &schema{
-		fields: fields,
-		TagKey: tagKey,
-	}
+	return true
 }
 
 // collectFields recursively collects all Field[T] fields with absolute offsets

@@ -10,39 +10,31 @@ type Sample5Fields struct {
 	E Field[uint64]  `json:"e"`
 }
 
-func BenchmarkLinker_5Fields(b *testing.B) {
-	// Warm up cache
-	x := Sample5Fields{}
-	Link(&x, "json")
+func init() {
+	LoadLink[Sample5Fields]("json")
+}
 
+func BenchmarkLinker_5Fields(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s := Sample5Fields{}
-		Link(&s, "json")
+		Link(&s)
 	}
 }
 
 func BenchmarkLinker_Simple(b *testing.B) {
-	// Warm up cache
-	x := SampleSimple{}
-	Link(&x, "json")
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s := SampleSimple{}
-		Link(&s, "json")
+		Link(&s)
 	}
 }
 
 func BenchmarkLinker_Embedded(b *testing.B) {
-	// Warm up cache
-	x := SampleEmbedStruct{}
-	Link(&x, "json")
-
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s := SampleEmbedStruct{}
-		Link(&s, "json")
+		Link(&s)
 	}
 }
 

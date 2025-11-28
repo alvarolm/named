@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-type Field[T any] struct {
+type Field[T comparable] struct {
 	path  *[]string // goes first so it's aligned with fieldHeader
 	Value T
 }
@@ -50,43 +50,8 @@ func (f *Field[T]) NoName() bool {
 }
 
 func (f *Field[T]) NoValue() bool {
-	v := any(f.Value)
-	switch val := v.(type) {
-	case int:
-		return val == 0
-	case int8:
-		return val == 0
-	case int16:
-		return val == 0
-	case int32:
-		return val == 0
-	case int64:
-		return val == 0
-	case uint:
-		return val == 0
-	case uint8:
-		return val == 0
-	case uint16:
-		return val == 0
-	case uint32:
-		return val == 0
-	case uint64:
-		return val == 0
-	case float32:
-		return val == 0
-	case float64:
-		return val == 0
-	case string:
-		return val == ""
-	case bool:
-		return !val
-	case *int, *int8, *int16, *int32, *int64,
-		*uint, *uint8, *uint16, *uint32, *uint64,
-		*float32, *float64, *string, *bool:
-		return val == nil
-	default:
-		return reflect.ValueOf(f.Value).IsZero()
-	}
+	var zero T
+	return f.Value == zero
 }
 
 // IsZero reports whether the Field's value is the zero value for its type.

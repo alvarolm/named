@@ -38,8 +38,6 @@ func BenchmarkLinker_Embedded(b *testing.B) {
 	}
 }
 
-/*
-
 func BenchmarkLinkerNoValue_Int(b *testing.B) {
 	f := Field[int]{Value: 0}
 	b.ResetTimer()
@@ -112,46 +110,3 @@ func BenchmarkLinkerNoValue_StructNonZero(b *testing.B) {
 		_ = f.NoValue()
 	}
 }
-
-func BenchmarkParentField_Access(b *testing.B) {
-	type Inner struct {
-		A Field[int] `json:"a"`
-	}
-	type Outer struct {
-		Y Field[Inner] `json:"y"`
-	}
-
-	s := Outer{}
-	Link(&s, "json")
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = s.Y.Value.A.Parent()
-	}
-}
-
-func BenchmarkParentField_ChainTraversal(b *testing.B) {
-	type Level3 struct {
-		Deep Field[int] `json:"deep"`
-	}
-	type Level2 struct {
-		Mid Field[Level3] `json:"mid"`
-	}
-	type Level1 struct {
-		Top Field[Level2] `json:"top"`
-	}
-
-	s := Level1{}
-	Link(&s, "json")
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		// Traverse parent chain
-		count := 0
-		for current := s.Top.Value.Mid.Value.Deep.Parent(); current != nil; current = current.Parent() {
-			count++
-		}
-		_ = count
-	}
-}
-*/

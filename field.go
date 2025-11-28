@@ -9,16 +9,23 @@ import (
 // basics
 // ################################
 
+var TextMarshaler = func(v any) ([]byte, error) {
+	return json.Marshal(v)
+}
+var TextUnmarshaler = func(data []byte, v any) error {
+	return json.Unmarshal(data, v)
+}
+
 const DefaulyFullNameSeparator = "."
 
-func field_name(pathPtr *[]string) string {
+func FieldNameOp(pathPtr *[]string) string {
 	if pathPtr == nil || len(*pathPtr) == 0 {
 		return ""
 	}
 	return (*pathPtr)[len(*pathPtr)-1]
 }
 
-func field_fullName(pathPtr *[]string, separator string) string {
+func FieldFullNameOp(pathPtr *[]string, separator string) string {
 
 	if separator == "" {
 		separator = DefaulyFullNameSeparator
@@ -26,14 +33,14 @@ func field_fullName(pathPtr *[]string, separator string) string {
 	return strings.Join(*pathPtr, separator)
 }
 
-func field_path(pathPtr *[]string) []string {
+func FieldPathOp(pathPtr *[]string) []string {
 	if pathPtr == nil {
 		return nil
 	}
 	return *pathPtr
 }
 
-func field_noName(pathPtr *[]string) bool {
+func FieldNoNameOp(pathPtr *[]string) bool {
 	return pathPtr == nil || len(*pathPtr) == 0
 }
 
@@ -48,27 +55,27 @@ type Field[T comparable] struct {
 
 // Name returns the leaf name of the field (last component of the path).
 func (f *Field[T]) Name() string {
-	return field_name(f.path)
+	return FieldNameOp(f.path)
 }
 
 // FullName returns the full hierarchical path as a separated string.
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *Field[T]) FullName(separator string) string {
-	if field_noName(f.path) {
+	if FieldNoNameOp(f.path) {
 		return ""
 	}
-	return field_fullName(f.path, separator)
+	return FieldFullNameOp(f.path, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *Field[T]) Path() []string {
-	return field_path(f.path)
+	return FieldPathOp(f.path)
 }
 
 func (f *Field[T]) NoName() bool {
-	return field_noName(f.path)
+	return FieldNoNameOp(f.path)
 }
 
 func (f *Field[T]) NoValue() bool {
@@ -90,6 +97,14 @@ func (f *Field[T]) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &f.Value)
 }
 
+func (f *Field[T]) MarshalText() (text []byte, err error) {
+	return TextMarshaler(f.Value)
+}
+
+func (f *Field[T]) UnmarshalText(text []byte) error {
+	return TextUnmarshaler(text, &f.Value)
+}
+
 // ################################
 // slice Field[T]
 // ################################
@@ -105,27 +120,27 @@ type FieldSlice[T Slice[E], E any] struct {
 
 // Name returns the leaf name of the field (last component of the path).
 func (f *FieldSlice[T, E]) Name() string {
-	return field_name(f.path)
+	return FieldNameOp(f.path)
 }
 
 // FullName returns the full hierarchical path as a separated string.
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *FieldSlice[T, E]) FullName(separator string) string {
-	if field_noName(f.path) {
+	if FieldNoNameOp(f.path) {
 		return ""
 	}
-	return field_fullName(f.path, separator)
+	return FieldFullNameOp(f.path, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *FieldSlice[T, E]) Path() []string {
-	return field_path(f.path)
+	return FieldPathOp(f.path)
 }
 
 func (f *FieldSlice[T, E]) NoName() bool {
-	return field_noName(f.path)
+	return FieldNoNameOp(f.path)
 }
 
 func (f *FieldSlice[T, E]) NoValue() bool {
@@ -144,4 +159,12 @@ func (f FieldSlice[T, E]) MarshalJSON() ([]byte, error) {
 
 func (f *FieldSlice[T, E]) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &f.Value)
+}
+
+func (f *FieldSlice[T, E]) MarshalText() (text []byte, err error) {
+	return TextMarshaler(f.Value)
+}
+
+func (f *FieldSlice[T, E]) UnmarshalText(text []byte) error {
+	return TextUnmarshaler(text, &f.Value)
 }

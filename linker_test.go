@@ -100,8 +100,54 @@ func TestLink_Embedded(t *testing.T) {
 		t.Errorf("Expected s.B.name to be 'y', got %v", s.B.name)
 	}
 
-	// Reuse all tests from TestLink_Simple for the embedded struct
-	testSampleSimple(t, &s.B.Value, "B.Value.")
+	// Test nested fields have parent prefix prepended
+	tests := []struct {
+		name     string
+		field    *Field[int]
+		expected string
+	}{
+		{"A", (*Field[int])(unsafe.Pointer(&s.B.Value.A)), "y.a"},
+		{"C", &s.B.Value.C, "y.c"},
+		{"E", &s.B.Value.E, "y.e"},
+		{"J (no tag)", &s.B.Value.J, "y.J"},
+	}
+
+	for _, tt := range tests {
+		if tt.field.name == nil || *tt.field.name != tt.expected {
+			t.Errorf("B.Value.%s: Expected name to be '%s', got %v", tt.name, tt.expected, *tt.field.name)
+		}
+	}
+
+	// Test other types with parent prefix
+	if s.B.Value.F.name == nil || *s.B.Value.F.name != "y.f" {
+		t.Errorf("B.Value.F: Expected name to be 'y.f', got %v", *s.B.Value.F.name)
+	}
+
+	if s.B.Value.G.name == nil || *s.B.Value.G.name != "y.g" {
+		t.Errorf("B.Value.G: Expected name to be 'y.g', got %v", *s.B.Value.G.name)
+	}
+
+	if s.B.Value.H.name == nil || *s.B.Value.H.name != "y.h" {
+		t.Errorf("B.Value.H: Expected name to be 'y.h', got %v", *s.B.Value.H.name)
+	}
+
+	if s.B.Value.I.name == nil || *s.B.Value.I.name != "y.i" {
+		t.Errorf("B.Value.I: Expected name to be 'y.i', got %v", *s.B.Value.I.name)
+	}
+
+	if s.B.Value.K.name == nil || *s.B.Value.K.name != "y.k" {
+		t.Errorf("B.Value.K: Expected name to be 'y.k', got %v", *s.B.Value.K.name)
+	}
+
+	// L should be skipped due to json:"-"
+	if s.B.Value.L.name != nil {
+		t.Errorf("B.Value.L: Expected name to be nil (skipped), got %v", *s.B.Value.L.name)
+	}
+
+	// m should be skipped because it's unexported
+	if s.B.Value.m.name != nil {
+		t.Errorf("B.Value.m: Expected name to be nil (unexported field), got %v", *s.B.Value.m.name)
+	}
 }
 
 func TestLink_OmitZero(t *testing.T) {

@@ -135,7 +135,7 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 
 func buildSchema(tVal reflect.Type, tagKey string) *schema {
 	var fields []fieldInfo
-	collectFields(tVal, tagKey, 0, &fields)
+	collectFields(tVal, tagKey, 0, "", &fields)
 	return &schema{
 		fields: fields,
 		TagKey: tagKey,
@@ -143,7 +143,7 @@ func buildSchema(tVal reflect.Type, tagKey string) *schema {
 }
 
 // collectFields recursively collects all Field[T] fields with absolute offsets
-func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, fields *[]fieldInfo) {
+func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, parentPrefix string, fields *[]fieldInfo) {
 	stringPtrType := reflect.TypeOf((*string)(nil))
 
 	for i := 0; i < tVal.NumField(); i++ {
@@ -170,9 +170,19 @@ func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, fields 
 					n = field.Name
 				}
 
+				// Prepend parent prefix if this is a nested field
+				fullName := n
+				if parentPrefix != "" {
+					fullName = parentPrefix + "." + n
+				}
+
+				// Allocate string on heap to ensure it persists
+				namePtr := new(string)
+				*namePtr = fullName
+
 				// Add to flat list with absolute offset
 				*fields = append(*fields, fieldInfo{
-					tagPtr: &n,
+					tagPtr: namePtr,
 					offset: baseOffset + field.Offset,
 				})
 
@@ -180,9 +190,9 @@ func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, fields 
 				if field.Type.NumField() >= 2 {
 					secondField := field.Type.Field(1)
 					if secondField.Name == "Value" && secondField.Type.Kind() == reflect.Struct {
-						// Recursively collect fields from nested struct
+						// Recursively collect fields from nested struct, passing current field name as prefix
 						nestedBaseOffset := baseOffset + field.Offset + secondField.Offset
-						collectFields(secondField.Type, tagKey, nestedBaseOffset, fields)
+						collectFields(secondField.Type, tagKey, nestedBaseOffset, n, fields)
 					}
 				}
 			}

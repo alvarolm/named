@@ -8,9 +8,19 @@ import (
 	"unsafe"
 )
 
+type FieldBasics interface {
+	Name() string
+	Parent() string
+}
+
 type Field[T any] struct {
-	name  *string // goes first so it's aligned with fildHeader
-	Value T
+	name        *string     // goes first so it's aligned with fildHeader
+	parentField FieldBasics // optional, for nested fields
+	Value       T
+}
+
+func (f *Field[T]) Parent() FieldBasics {
+	return f.parentField
 }
 
 func (f *Field[T]) Name() string {
@@ -94,7 +104,8 @@ var genericSchemaCache = sync.Map{}
 
 // fieldHeader matches initial memory layout Field
 type fieldHeader struct {
-	name *string
+	name        *string
+	parentField FieldBasics
 }
 
 func Link[T any](s *T, tagKey string) {
@@ -108,17 +119,20 @@ func Link[T any](s *T, tagKey string) {
 
 // linkGenericReflect is a helper that recursively links a struct given its reflect.Type
 func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
-	if tVal.Kind() != reflect.Struct {
-		return
-	}
 
 	// get cached schema or build it
 	var sch *schema
 	if cached, ok := genericSchemaCache.Load(tVal); ok {
 		sch = cached.(*schema)
 	} else {
+
+		if tVal.Kind() != reflect.Struct {
+			return
+		}
+
 		sch = buildSchema(tVal, tagKey)
 		genericSchemaCache.Store(tVal, sch)
+
 	}
 
 	if sch.TagKey != tagKey {
@@ -126,9 +140,11 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 	}
 
 	// link all Field[T] name pointers
-	for i := 0; i < len(sch.offsets); i++ {
-		fieldPtr := unsafe.Pointer(uintptr(ptr) + sch.offsets[i])
-		(*fieldHeader)(fieldPtr).name = sch.tagPtrs[i]
+	offsets := sch.offsets
+	tagPtrs := sch.tagPtrs
+	for i := range offsets {
+		fieldPtr := unsafe.Pointer(uintptr(ptr) + offsets[i])
+		(*fieldHeader)(fieldPtr).name = tagPtrs[i]
 	}
 
 	// recursively link nested structs
@@ -136,6 +152,7 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 		valuePtr := unsafe.Pointer(uintptr(ptr) + nested.valueOffset)
 		linkGenericReflect(valuePtr, nested.valueType, tagKey)
 	}
+
 }
 
 func buildSchema(tVal reflect.Type, tagKey string) *schema {

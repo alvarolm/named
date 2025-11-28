@@ -2,6 +2,26 @@ package named
 
 import "testing"
 
+type Sample5Fields struct {
+	A Field[int]     `json:"a"`
+	B Field[string]  `json:"b"`
+	C Field[float64] `json:"c"`
+	D Field[any]     `json:"d"`
+	E Field[uint64]  `json:"e"`
+}
+
+func BenchmarkLikner_5Fields(b *testing.B) {
+	// Warm up cache
+	x := Sample5Fields{}
+	Link(&x, "json")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := Sample5Fields{}
+		Link(&s, "json")
+	}
+}
+
 func BenchmarkLikner_Simple(b *testing.B) {
 	// Warm up cache
 	x := SampleSimple{}

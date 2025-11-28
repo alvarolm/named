@@ -81,17 +81,11 @@ func (f *Field[T]) UnmarshalJSON(data []byte) error {
 type fieldInfo struct {
 	tagPtr *string
 	offset uintptr
-	nested *nestedStructInfo
 }
 
 type schema struct {
 	fields []fieldInfo
 	TagKey string
-}
-
-type nestedStructInfo struct {
-	valueOffset uintptr
-	valueType   reflect.Type
 }
 
 var genericSchemaCache = sync.Map{}
@@ -128,28 +122,28 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 
 	}
 
-	if sch.TagKey != tagKey {
-		panic("Mismatched tag key in schema cache")
-	}
+	// Note:
+	// breaking change: no longer tagkey is checked, assumes the schema is built with the correct tagkey
 
-	// link all Field[T] name pointers and recursively link nested structs
-	for i := range sch.fields {
-		field := &sch.fields[i]
+	// link all Field[T] name pointers (flat iteration, no recursion)
+	for _, field := range sch.fields {
 		fieldPtr := unsafe.Pointer(uintptr(ptr) + field.offset)
 		(*fieldHeader)(fieldPtr).name = field.tagPtr
-		/*
-			// Handle nested structs inline
-			if field.nested != nil {
-				valuePtr := unsafe.Pointer(uintptr(ptr) + field.nested.valueOffset)
-				linkGenericReflect(valuePtr, field.nested.valueType, tagKey)
-			}
-		*/
 	}
 
 }
 
 func buildSchema(tVal reflect.Type, tagKey string) *schema {
 	var fields []fieldInfo
+	collectFields(tVal, tagKey, 0, &fields)
+	return &schema{
+		fields: fields,
+		TagKey: tagKey,
+	}
+}
+
+// collectFields recursively collects all Field[T] fields with absolute offsets
+func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, fields *[]fieldInfo) {
 	stringPtrType := reflect.TypeOf((*string)(nil))
 
 	for i := 0; i < tVal.NumField(); i++ {
@@ -160,47 +154,38 @@ func buildSchema(tVal reflect.Type, tagKey string) *schema {
 			continue
 		}
 
-		// skip fields with json:"-"
+		// skip fields with tag "-"
 		tagName := strings.Split(field.Tag.Get(tagKey), ",")[0]
 		if tagName == "-" {
 			continue
 		}
 
-		// check for matching layout (Field[T])
+		// check for Field[T] pattern
 		if field.Type.Kind() == reflect.Struct && field.Type.NumField() > 0 {
 			firstField := field.Type.Field(0)
 			if firstField.Type == stringPtrType && firstField.Name == "name" {
-				// Found a Field[T], create tag name
+				// Found a Field[T]
 				n := strings.Split(field.Tag.Get(tagKey), ",")[0]
 				if n == "" {
 					n = field.Name
 				}
 
-				// Create fieldInfo
-				fInfo := fieldInfo{
+				// Add to flat list with absolute offset
+				*fields = append(*fields, fieldInfo{
 					tagPtr: &n,
-					offset: field.Offset,
-					nested: nil,
-				}
+					offset: baseOffset + field.Offset,
+				})
 
-				// Check if this Field[T] has a struct Value needing recursive linking
+				// Check if Value is a struct that might contain more Field[T] fields
 				if field.Type.NumField() >= 2 {
 					secondField := field.Type.Field(1)
 					if secondField.Name == "Value" && secondField.Type.Kind() == reflect.Struct {
-						fInfo.nested = &nestedStructInfo{
-							valueOffset: field.Offset + secondField.Offset,
-							valueType:   secondField.Type,
-						}
+						// Recursively collect fields from nested struct
+						nestedBaseOffset := baseOffset + field.Offset + secondField.Offset
+						collectFields(secondField.Type, tagKey, nestedBaseOffset, fields)
 					}
 				}
-
-				fields = append(fields, fInfo)
 			}
 		}
-	}
-
-	return &schema{
-		fields: fields,
-		TagKey: tagKey,
 	}
 }

@@ -9,19 +9,44 @@ import (
 )
 
 type Field[T any] struct {
-	name  *string // goes first so it's aligned with fildHeader
+	path  *[]string // goes first so it's aligned with fieldHeader
 	Value T
 }
 
+// Name returns the leaf name of the field (last component of the path).
 func (f *Field[T]) Name() string {
-	if f.name == nil {
+	if f.path == nil || len(*f.path) == 0 {
 		return ""
 	}
-	return *f.name
+	return (*f.path)[len(*f.path)-1]
+}
+
+const DefaulyFullNameSeparator = "."
+
+// FullName returns the full hierarchical path as a separated string.
+// If separator is empty, defaults to ".".
+// This provides backward compatibility for users who need the old Name() behavior.
+func (f *Field[T]) FullName(separator string) string {
+	if f.path == nil || len(*f.path) == 0 {
+		return ""
+	}
+	if separator == "" {
+		separator = DefaulyFullNameSeparator
+	}
+	return strings.Join(*f.path, separator)
+}
+
+// Path returns the complete hierarchical path as a slice.
+// Returns nil if the field has no path information.
+func (f *Field[T]) Path() []string {
+	if f.path == nil {
+		return nil
+	}
+	return *f.path
 }
 
 func (f *Field[T]) NoName() bool {
-	return (f.name == nil || *f.name == "")
+	return f.path == nil || len(*f.path) == 0
 }
 
 func (f *Field[T]) NoValue() bool {
@@ -79,8 +104,8 @@ func (f *Field[T]) UnmarshalJSON(data []byte) error {
 }
 
 type fieldInfo struct {
-	tagPtr *string
-	offset uintptr
+	pathPtr *[]string // Full hierarchical path: ["parent", "child"]
+	offset  uintptr
 }
 
 type schema struct {
@@ -92,7 +117,7 @@ var genericSchemaCache = sync.Map{}
 
 // fieldHeader matches initial memory layout Field
 type fieldHeader struct {
-	name *string
+	path *[]string
 }
 
 func Link[T any](s *T, tagKey string) {
@@ -100,12 +125,6 @@ func Link[T any](s *T, tagKey string) {
 
 	var zero T
 	tVal := reflect.TypeOf(zero)
-
-	linkGenericReflect(ptr, tVal, tagKey)
-}
-
-// linkGenericReflect is a helper that recursively links a struct given its reflect.Type
-func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 
 	// get cached schema or build it
 	var sch *schema
@@ -125,17 +144,16 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 	// Note:
 	// breaking change: no longer tagkey is checked, assumes the schema is built with the correct tagkey
 
-	// link all Field[T] name pointers (flat iteration, no recursion)
+	// link all Field[T] path pointers
 	for _, field := range sch.fields {
-		fieldPtr := unsafe.Pointer(uintptr(ptr) + field.offset)
-		(*fieldHeader)(fieldPtr).name = field.tagPtr
+		(*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset)).path = field.pathPtr
 	}
 
 }
 
 func buildSchema(tVal reflect.Type, tagKey string) *schema {
 	var fields []fieldInfo
-	collectFields(tVal, tagKey, 0, "", &fields)
+	collectFields(tVal, tagKey, 0, nil, &fields)
 	return &schema{
 		fields: fields,
 		TagKey: tagKey,
@@ -143,8 +161,8 @@ func buildSchema(tVal reflect.Type, tagKey string) *schema {
 }
 
 // collectFields recursively collects all Field[T] fields with absolute offsets
-func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, parentPrefix string, fields *[]fieldInfo) {
-	stringPtrType := reflect.TypeOf((*string)(nil))
+func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, parentPath []string, fields *[]fieldInfo) {
+	sliceStringPtrType := reflect.TypeOf((*[]string)(nil))
 
 	for i := 0; i < tVal.NumField(); i++ {
 		field := tVal.Field(i)
@@ -163,36 +181,40 @@ func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, parentP
 		// check for Field[T] pattern
 		if field.Type.Kind() == reflect.Struct && field.Type.NumField() > 0 {
 			firstField := field.Type.Field(0)
-			if firstField.Type == stringPtrType && firstField.Name == "name" {
+			if firstField.Type == sliceStringPtrType && firstField.Name == "path" {
 				// Found a Field[T]
 				n := strings.Split(field.Tag.Get(tagKey), ",")[0]
 				if n == "" {
 					n = field.Name
 				}
 
-				// Prepend parent prefix if this is a nested field
-				fullName := n
-				if parentPrefix != "" {
-					fullName = parentPrefix + "." + n
+				// Build hierarchical path as slice
+				var currentPath []string
+				if len(parentPath) > 0 {
+					currentPath = make([]string, len(parentPath)+1)
+					copy(currentPath, parentPath)
+					currentPath[len(parentPath)] = n
+				} else {
+					currentPath = []string{n}
 				}
 
-				// Allocate string on heap to ensure it persists
-				namePtr := new(string)
-				*namePtr = fullName
+				// Allocate path slice on heap to ensure it persists
+				pathPtr := new([]string)
+				*pathPtr = currentPath
 
 				// Add to flat list with absolute offset
 				*fields = append(*fields, fieldInfo{
-					tagPtr: namePtr,
-					offset: baseOffset + field.Offset,
+					pathPtr: pathPtr,
+					offset:  baseOffset + field.Offset,
 				})
 
 				// Check if Value is a struct that might contain more Field[T] fields
 				if field.Type.NumField() >= 2 {
-					secondField := field.Type.Field(1)
-					if secondField.Name == "Value" && secondField.Type.Kind() == reflect.Struct {
-						// Recursively collect fields from nested struct, passing current field name as prefix
-						nestedBaseOffset := baseOffset + field.Offset + secondField.Offset
-						collectFields(secondField.Type, tagKey, nestedBaseOffset, n, fields)
+					valueField := field.Type.Field(1) // Value is at index 1 (path=0, Value=1)
+					if valueField.Name == "Value" && valueField.Type.Kind() == reflect.Struct {
+						// Recursively collect fields from nested struct, passing current path
+						nestedBaseOffset := baseOffset + field.Offset + valueField.Offset
+						collectFields(valueField.Type, tagKey, nestedBaseOffset, currentPath, fields)
 					}
 				}
 			}

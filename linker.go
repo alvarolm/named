@@ -8,19 +8,9 @@ import (
 	"unsafe"
 )
 
-type FieldBasics interface {
-	Name() string
-	Parent() string
-}
-
 type Field[T any] struct {
-	name        *string     // goes first so it's aligned with fildHeader
-	parentField FieldBasics // optional, for nested fields
-	Value       T
-}
-
-func (f *Field[T]) Parent() FieldBasics {
-	return f.parentField
+	name  *string // goes first so it's aligned with fildHeader
+	Value T
 }
 
 func (f *Field[T]) Name() string {
@@ -88,11 +78,15 @@ func (f *Field[T]) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &f.Value)
 }
 
+type fieldInfo struct {
+	tagPtr *string
+	offset uintptr
+	nested *nestedStructInfo
+}
+
 type schema struct {
-	tagPtrs       []*string
-	offsets       []uintptr
-	nestedStructs []nestedStructInfo
-	TagKey        string
+	fields []fieldInfo
+	TagKey string
 }
 
 type nestedStructInfo struct {
@@ -104,8 +98,7 @@ var genericSchemaCache = sync.Map{}
 
 // fieldHeader matches initial memory layout Field
 type fieldHeader struct {
-	name        *string
-	parentField FieldBasics
+	name *string
 }
 
 func Link[T any](s *T, tagKey string) {
@@ -139,25 +132,24 @@ func linkGenericReflect(ptr unsafe.Pointer, tVal reflect.Type, tagKey string) {
 		panic("Mismatched tag key in schema cache")
 	}
 
-	// link all Field[T] name pointers
-	offsets := sch.offsets
-	tagPtrs := sch.tagPtrs
-	for i := range offsets {
-		fieldPtr := unsafe.Pointer(uintptr(ptr) + offsets[i])
-		(*fieldHeader)(fieldPtr).name = tagPtrs[i]
-	}
-
-	// recursively link nested structs
-	for _, nested := range sch.nestedStructs {
-		valuePtr := unsafe.Pointer(uintptr(ptr) + nested.valueOffset)
-		linkGenericReflect(valuePtr, nested.valueType, tagKey)
+	// link all Field[T] name pointers and recursively link nested structs
+	for i := range sch.fields {
+		field := &sch.fields[i]
+		fieldPtr := unsafe.Pointer(uintptr(ptr) + field.offset)
+		(*fieldHeader)(fieldPtr).name = field.tagPtr
+		/*
+			// Handle nested structs inline
+			if field.nested != nil {
+				valuePtr := unsafe.Pointer(uintptr(ptr) + field.nested.valueOffset)
+				linkGenericReflect(valuePtr, field.nested.valueType, tagKey)
+			}
+		*/
 	}
 
 }
 
 func buildSchema(tVal reflect.Type, tagKey string) *schema {
-	var matchingIndices []int
-	var nestedStructs []nestedStructInfo
+	var fields []fieldInfo
 	stringPtrType := reflect.TypeOf((*string)(nil))
 
 	for i := 0; i < tVal.NumField(); i++ {
@@ -174,43 +166,41 @@ func buildSchema(tVal reflect.Type, tagKey string) *schema {
 			continue
 		}
 
-		// check for matching layout
+		// check for matching layout (Field[T])
 		if field.Type.Kind() == reflect.Struct && field.Type.NumField() > 0 {
 			firstField := field.Type.Field(0)
 			if firstField.Type == stringPtrType && firstField.Name == "name" {
-				matchingIndices = append(matchingIndices, i)
+				// Found a Field[T], create tag name
+				n := strings.Split(field.Tag.Get(tagKey), ",")[0]
+				if n == "" {
+					n = field.Name
+				}
 
-				// check if this Field[T] has a struct Value that needs recursive linking
+				// Create fieldInfo
+				fInfo := fieldInfo{
+					tagPtr: &n,
+					offset: field.Offset,
+					nested: nil,
+				}
+
+				// Check if this Field[T] has a struct Value needing recursive linking
 				if field.Type.NumField() >= 2 {
 					secondField := field.Type.Field(1)
 					if secondField.Name == "Value" && secondField.Type.Kind() == reflect.Struct {
-						nestedStructs = append(nestedStructs, nestedStructInfo{
+						fInfo.nested = &nestedStructInfo{
 							valueOffset: field.Offset + secondField.Offset,
 							valueType:   secondField.Type,
-						})
+						}
 					}
 				}
+
+				fields = append(fields, fInfo)
 			}
 		}
 	}
 
-	// build schema for matching fields
-	sch := &schema{
-		tagPtrs:       make([]*string, len(matchingIndices)),
-		offsets:       make([]uintptr, len(matchingIndices)),
-		nestedStructs: nestedStructs,
-		TagKey:        tagKey,
+	return &schema{
+		fields: fields,
+		TagKey: tagKey,
 	}
-
-	for idx, i := range matchingIndices {
-		field := tVal.Field(i)
-		n := strings.Split(field.Tag.Get(tagKey), ",")[0]
-		if n == "" {
-			n = field.Name
-		}
-		sch.tagPtrs[idx] = &n
-		sch.offsets[idx] = field.Offset
-	}
-
-	return sch
 }

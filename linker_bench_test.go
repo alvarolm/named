@@ -10,7 +10,7 @@ type Sample5Fields struct {
 	E Field[uint64]  `json:"e"`
 }
 
-func BenchmarkLikner_5Fields(b *testing.B) {
+func BenchmarkLinker_5Fields(b *testing.B) {
 	// Warm up cache
 	x := Sample5Fields{}
 	Link(&x, "json")
@@ -22,7 +22,7 @@ func BenchmarkLikner_5Fields(b *testing.B) {
 	}
 }
 
-func BenchmarkLikner_Simple(b *testing.B) {
+func BenchmarkLinker_Simple(b *testing.B) {
 	// Warm up cache
 	x := SampleSimple{}
 	Link(&x, "json")
@@ -34,7 +34,7 @@ func BenchmarkLikner_Simple(b *testing.B) {
 	}
 }
 
-func BenchmarkLikner_Embedded(b *testing.B) {
+func BenchmarkLinker_Embedded(b *testing.B) {
 	// Warm up cache
 	x := SampleEmbedStruct{}
 	Link(&x, "json")
@@ -45,6 +45,8 @@ func BenchmarkLikner_Embedded(b *testing.B) {
 		Link(&s, "json")
 	}
 }
+
+/*
 
 func BenchmarkLinkerNoValue_Int(b *testing.B) {
 	f := Field[int]{Value: 0}
@@ -118,3 +120,46 @@ func BenchmarkLinkerNoValue_StructNonZero(b *testing.B) {
 		_ = f.NoValue()
 	}
 }
+
+func BenchmarkParentField_Access(b *testing.B) {
+	type Inner struct {
+		A Field[int] `json:"a"`
+	}
+	type Outer struct {
+		Y Field[Inner] `json:"y"`
+	}
+
+	s := Outer{}
+	Link(&s, "json")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.Y.Value.A.Parent()
+	}
+}
+
+func BenchmarkParentField_ChainTraversal(b *testing.B) {
+	type Level3 struct {
+		Deep Field[int] `json:"deep"`
+	}
+	type Level2 struct {
+		Mid Field[Level3] `json:"mid"`
+	}
+	type Level1 struct {
+		Top Field[Level2] `json:"top"`
+	}
+
+	s := Level1{}
+	Link(&s, "json")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		// Traverse parent chain
+		count := 0
+		for current := s.Top.Value.Mid.Value.Deep.Parent(); current != nil; current = current.Parent() {
+			count++
+		}
+		_ = count
+	}
+}
+*/

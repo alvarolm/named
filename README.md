@@ -75,7 +75,6 @@ BenchmarkManual-8       1000000000               0.2431 ns/op          0 B/op   
 I think this is an acceptable trade off, for my case this is good enough to handle small structs.
 
 Update: I have broken apart the generation and cache of the schema into a new function ```LoadLink[T any](tagKey string) error``` this must be called just once. also replaced any reflection calls in ```Link[T any](s *T) bool``` with unsafe casting, this last one must be called just once per new struct allocation.
-}
 
 ```bash
 $ go test -bench=. -benchmem

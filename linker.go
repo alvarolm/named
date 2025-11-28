@@ -1,72 +1,11 @@
 package named
 
 import (
-	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
 	"unsafe"
 )
-
-type Field[T comparable] struct {
-	path  *[]string // goes first so it's aligned with fieldHeader
-	Value T
-}
-
-// Name returns the leaf name of the field (last component of the path).
-func (f *Field[T]) Name() string {
-	if f.path == nil || len(*f.path) == 0 {
-		return ""
-	}
-	return (*f.path)[len(*f.path)-1]
-}
-
-const DefaulyFullNameSeparator = "."
-
-// FullName returns the full hierarchical path as a separated string.
-// If separator is empty, defaults to ".".
-// This provides backward compatibility for users who need the old Name() behavior.
-func (f *Field[T]) FullName(separator string) string {
-	if f.path == nil || len(*f.path) == 0 {
-		return ""
-	}
-	if separator == "" {
-		separator = DefaulyFullNameSeparator
-	}
-	return strings.Join(*f.path, separator)
-}
-
-// Path returns the complete hierarchical path as a slice.
-// Returns nil if the field has no path information.
-func (f *Field[T]) Path() []string {
-	if f.path == nil {
-		return nil
-	}
-	return *f.path
-}
-
-func (f *Field[T]) NoName() bool {
-	return f.path == nil || len(*f.path) == 0
-}
-
-func (f *Field[T]) NoValue() bool {
-	var zero T
-	return f.Value == zero
-}
-
-// IsZero reports whether the Field's value is the zero value for its type.
-// This method is used by encoding/json to support the omitempty tag.
-func (f *Field[T]) IsZero() bool {
-	return f.NoValue()
-}
-
-func (f Field[T]) MarshalJSON() ([]byte, error) {
-	return json.Marshal(f.Value)
-}
-
-func (f *Field[T]) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &f.Value)
-}
 
 type fieldInfo struct {
 	pathPtr *[]string // Full hierarchical path: ["parent", "child"]

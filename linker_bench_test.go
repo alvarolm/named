@@ -38,6 +38,18 @@ func BenchmarkLinker_Embedded(b *testing.B) {
 	}
 }
 
+func BenchmarkLinkerNoValue_SliceOfStructs(b *testing.B) {
+	type MyStruct struct {
+		A int
+		B string
+	}
+	f := FieldSlice[[]MyStruct, MyStruct]{Value: []MyStruct{}}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = f.NoValue()
+	}
+}
+
 func BenchmarkLinkerNoValue_Int(b *testing.B) {
 	f := Field[int]{Value: 0}
 	b.ResetTimer()

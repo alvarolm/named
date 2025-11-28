@@ -70,9 +70,24 @@ BenchmarkUnsafe-8      69204219                15.69 ns/op            0 B/op    
 BenchmarkManual-8       1000000000               0.2431 ns/op          0 B/op          0 allocs/op
 ```
 
+**[old-benchmarks](/old_bench_test.go.txt)**
+
 I think this is an acceptable trade off, for my case this is good enough to handle small structs.
 
-**[old-benchmarks](/old_bench_test.go.txt)**
+Update: I have broken apart the generation and cache of the schema into a new function ```LoadLink[T any](tagKey string) error``` this must be called just once. also replaced any reflection calls in ```Link[T any](s *T) bool``` with unsafe casting, this last one must be called just once per new struct allocation.
+}
+
+```bash
+$ go test -bench=. -benchmem
+goos: linux
+goarch: amd64
+pkg: github.com/alvarolm/named
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkGeneratedNamed-8    	1000000000	         0.2409 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinker_5Fields-8    	229905655	         5.223 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinker_Simple-8     	187726124	         6.328 ns/op	       0 B/op	       0 allocs/op
+BenchmarkLinker_Embedded-8   	172001151	         7.059 ns/op	       0 B/op	       0 allocs/op
+```
 
 ### Usage:
 
@@ -85,12 +100,16 @@ type ExampleStruct struct {
 	m Field[any]     				// field name: none, field is unexported (starts with lower case) so its skipped
 }
 ```
-2) call Link on the struct pointer (once)
+2) call LoadLink before any Link call (once overall, you can put the call inside an init function near the struct definition) 
+```go
+named[ExampleStruct].LoadLink("json")
+```
+3) call Link on the struct pointer (once per new struct allocation)
 ```go
 // x := &ExampleStruct{Field[int]{Value: 10}}
 named.Link(&s, "json")
 ```
-3) retrieve the field name with the Name method
+4) retrieve the field name with the Name method
 ```go
 fmt.Println(x.A.Name())
 Output: a

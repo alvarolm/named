@@ -13,7 +13,6 @@ type fielder interface {
 	Name() string
 	FullName(separator string) string
 	Path() []string
-	PathWithoutName() []string
 	NoName() bool
 	NoValue() bool
 	IsZero() bool
@@ -37,6 +36,9 @@ const DefaulyFullNameSeparator = "."
 func fieldNameOp(pathPtr *[]string) string {
 	if pathPtr == nil || len(*pathPtr) == 0 {
 		return ""
+	}
+	if len(*pathPtr) == 1 {
+		return (*pathPtr)[0]
 	}
 	return (*pathPtr)[len(*pathPtr)-1]
 }
@@ -96,13 +98,6 @@ func fieldFullNameOp(pathPtr, parentPathPtr *[]string, separator string) string 
 	return unsafe.String(unsafe.SliceData(buf), size)
 }
 
-func fieldPathWithoutNameOp(pathPtr *[]string) []string {
-	if pathPtr == nil || len(*pathPtr) == 0 {
-		return nil
-	}
-	return (*pathPtr)[:len(*pathPtr)-1]
-}
-
 func fieldNoNameOp(pathPtr *[]string) bool {
 	return pathPtr == nil || len(*pathPtr) == 0
 }
@@ -150,10 +145,6 @@ func (f *Field[T]) FullName(separator string) string {
 // Returns nil if the field has no path information.
 func (f *Field[T]) Path() []string {
 	return getCombinedPath(f.path, f.parentPath)
-}
-
-func (f *Field[T]) PathWithoutName() []string {
-	return fieldPathWithoutNameOp(f.path)
 }
 
 func (f *Field[T]) NoName() bool {
@@ -219,10 +210,6 @@ func (f *FieldSlice[T, E]) FullName(separator string) string {
 // Returns nil if the field has no path information.
 func (f *FieldSlice[T, E]) Path() []string {
 	return getCombinedPath(f.path, f.parentPath)
-}
-
-func (f *FieldSlice[T, E]) PathWithoutName() []string {
-	return fieldPathWithoutNameOp(f.path)
 }
 
 func (f *FieldSlice[T, E]) NoName() bool {

@@ -38,6 +38,80 @@ func BenchmarkLinker_Embedded(b *testing.B) {
 	}
 }
 
+func BenchmarkLinkerWithPath_5Fields_2Levels(b *testing.B) {
+	path := []string{"level1", "level2"}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s := Sample5Fields{}
+		LinkWithPath(&s, path)
+	}
+}
+
+func BenchmarkLinkerBasic_NameCall(b *testing.B) {
+	type MyStruct struct {
+		A Field[int]
+		B Field[string]
+	}
+	s := MyStruct{}
+	Link(&s)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.A.Name()
+	}
+}
+
+func BenchmarkLinkerBasic_FullNameCall(b *testing.B) {
+	type MyStruct struct {
+		A Field[int]
+		B Field[string]
+	}
+	s := MyStruct{}
+	Link(&s)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.B.FullName(".")
+	}
+}
+
+func BenchmarkLinkerBasic_PathCall(b *testing.B) {
+	type MyStruct struct {
+		A Field[int]
+		B Field[string]
+	}
+	s := MyStruct{}
+	Link(&s)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.B.Path()
+	}
+}
+
+func BenchmarkLinkerWithPathBasic_FullNameCall(b *testing.B) {
+	type MyStruct struct {
+		A Field[int]
+		B Field[string]
+	}
+	s := MyStruct{}
+	LinkWithPath(&s, []string{"level1", "level2"})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.B.FullName(".")
+	}
+}
+
+func BenchmarkLinkerWithPathBasic_PathCall(b *testing.B) {
+	type MyStruct struct {
+		A Field[int]
+		B Field[string]
+	}
+	s := MyStruct{}
+	LinkWithPath(&s, []string{"level1", "level2"})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = s.B.Path()
+	}
+}
+
 func BenchmarkLinkerNoValue_SliceOfStructs(b *testing.B) {
 	type MyStruct struct {
 		A int

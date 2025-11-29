@@ -9,6 +9,12 @@ import (
 // basics
 // ################################
 
+// fieldHeader must match with the initial layout of Field[T] and FieldSlice[T,E]
+type fieldHeader struct {
+	path       *[]string
+	parentPath *[]string
+}
+
 var TextMarshaler = func(v any) ([]byte, error) {
 	return json.Marshal(v)
 }
@@ -49,8 +55,9 @@ func FieldNoNameOp(pathPtr *[]string) bool {
 // ################################
 
 type Field[T comparable] struct {
-	path  *[]string // goes first so it's aligned with fieldHeader
-	Value T
+	path       *[]string // goes first so it's aligned with fieldHeader
+	parentPath *[]string // second field, aligned with fieldHeader
+	Value      T
 }
 
 // Name returns the leaf name of the field (last component of the path).
@@ -62,16 +69,42 @@ func (f *Field[T]) Name() string {
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *Field[T]) FullName(separator string) string {
-	if FieldNoNameOp(f.path) {
+	combinedPath := f.getCombinedPath()
+	if combinedPath == nil || len(*combinedPath) == 0 {
 		return ""
 	}
-	return FieldFullNameOp(f.path, separator)
+	return FieldFullNameOp(combinedPath, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *Field[T]) Path() []string {
-	return FieldPathOp(f.path)
+	combinedPath := f.getCombinedPath()
+	return FieldPathOp(combinedPath)
+}
+
+// getCombinedPath combines parentPath and path into a single path
+func (f *Field[T]) getCombinedPath() *[]string {
+	if f.parentPath == nil || len(*f.parentPath) == 0 {
+		return f.path
+	}
+	if f.path == nil || len(*f.path) == 0 {
+		return f.parentPath
+	}
+	// Combine parentPath + path
+	combined := make([]string, len(*f.parentPath)+len(*f.path))
+	copy(combined, *f.parentPath)
+	copy(combined[len(*f.parentPath):], *f.path)
+	return &combined
+}
+
+// ParentPath returns the runtime parent path if set.
+// Returns nil if no parent path was assigned during linking.
+func (f *Field[T]) ParentPath() []string {
+	if f.parentPath == nil {
+		return nil
+	}
+	return *f.parentPath
 }
 
 func (f *Field[T]) NoName() bool {
@@ -114,8 +147,9 @@ type Slice[T any] interface {
 }
 
 type FieldSlice[T Slice[E], E any] struct {
-	path  *[]string // goes first so it's aligned with fieldHeader
-	Value T
+	path       *[]string // goes first so it's aligned with fieldHeader
+	parentPath *[]string // second field, aligned with fieldHeader
+	Value      T
 }
 
 // Name returns the leaf name of the field (last component of the path).
@@ -127,16 +161,42 @@ func (f *FieldSlice[T, E]) Name() string {
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *FieldSlice[T, E]) FullName(separator string) string {
-	if FieldNoNameOp(f.path) {
+	combinedPath := f.getCombinedPath()
+	if combinedPath == nil || len(*combinedPath) == 0 {
 		return ""
 	}
-	return FieldFullNameOp(f.path, separator)
+	return FieldFullNameOp(combinedPath, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *FieldSlice[T, E]) Path() []string {
-	return FieldPathOp(f.path)
+	combinedPath := f.getCombinedPath()
+	return FieldPathOp(combinedPath)
+}
+
+// getCombinedPath combines parentPath and path into a single path
+func (f *FieldSlice[T, E]) getCombinedPath() *[]string {
+	if f.parentPath == nil || len(*f.parentPath) == 0 {
+		return f.path
+	}
+	if f.path == nil || len(*f.path) == 0 {
+		return f.parentPath
+	}
+	// Combine parentPath + path
+	combined := make([]string, len(*f.parentPath)+len(*f.path))
+	copy(combined, *f.parentPath)
+	copy(combined[len(*f.parentPath):], *f.path)
+	return &combined
+}
+
+// ParentPath returns the runtime parent path if set.
+// Returns nil if no parent path was assigned during linking.
+func (f *FieldSlice[T, E]) ParentPath() []string {
+	if f.parentPath == nil {
+		return nil
+	}
+	return *f.parentPath
 }
 
 func (f *FieldSlice[T, E]) NoName() bool {

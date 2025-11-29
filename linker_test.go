@@ -214,6 +214,9 @@ func TestField_NameReturnsLeafOnly(t *testing.T) {
 
 	// Nested field returns leaf name only (not "y.a")
 	if s.Y.Value.A.Name() != "a" {
+
+		//spew.Dump(s.Y.Value.A.path)
+
 		t.Errorf("Expected Name() to return 'a', got '%s'", s.Y.Value.A.Name())
 	}
 
@@ -307,14 +310,112 @@ func TestFieldMemoryLayout(t *testing.T) {
 		t.Errorf("path field should be at offset 0, got %d", pathOffset)
 	}
 
-	// Verify Value field is at offset 8 (after one pointer)
-	valueOffset := unsafe.Offsetof(f.Value)
-	if valueOffset != 8 {
-		t.Errorf("Value field should be at offset 8, got %d", valueOffset)
+	// Verify parentPath field is at offset 8 (after first pointer)
+	parentPathOffset := unsafe.Offsetof(f.parentPath)
+	if parentPathOffset != 8 {
+		t.Errorf("parentPath field should be at offset 8, got %d", parentPathOffset)
 	}
 
-	// Verify fieldHeader matches Field[T] layout (should be 8 bytes - one pointer)
-	if unsafe.Sizeof(fieldHeader{}) != 8 {
-		t.Errorf("fieldHeader should be 8 bytes, got %d", unsafe.Sizeof(fieldHeader{}))
+	// Verify Value field is at offset 16 (after two pointers)
+	valueOffset := unsafe.Offsetof(f.Value)
+	if valueOffset != 16 {
+		t.Errorf("Value field should be at offset 16, got %d", valueOffset)
 	}
+
+	// Verify fieldHeader matches Field[T] layout (should be 16 bytes - two pointers)
+	if unsafe.Sizeof(fieldHeader{}) != 16 {
+		t.Errorf("fieldHeader should be 16 bytes, got %d", unsafe.Sizeof(fieldHeader{}))
+	}
+}
+
+func TestLinkWithPath(t *testing.T) {
+	type Inner struct {
+		A Field[int]    `json:"a"`
+		B Field[string] `json:"b"`
+	}
+
+	LoadLink[Inner]("json")
+
+	// Test with empty parent path (should behave like Link)
+	t.Run("EmptyParentPath", func(t *testing.T) {
+		s := Inner{}
+		ok := LinkWithPath(&s, []string{})
+		if !ok {
+			t.Fatal("LinkParent failed")
+		}
+
+		if s.A.Name() != "a" {
+			t.Errorf("Expected A.Name() to be 'a', got '%s'", s.A.Name())
+		}
+		if s.B.Name() != "b" {
+			t.Errorf("Expected B.Name() to be 'b', got '%s'", s.B.Name())
+		}
+		if s.A.FullName("") != "a" {
+			t.Errorf("Expected A.FullName() to be 'a', got '%s'", s.A.FullName(""))
+		}
+	})
+
+	// Test with single-level parent path
+	t.Run("SingleLevelParent", func(t *testing.T) {
+		s := Inner{}
+		ok := LinkWithPath(&s, []string{"parent"})
+		if !ok {
+			t.Fatal("LinkParent failed")
+		}
+
+		if s.A.Name() != "a" {
+			t.Errorf("Expected A.Name() to be 'a', got '%s'", s.A.Name())
+		}
+		if s.A.FullName("") != "parent.a" {
+			t.Errorf("Expected A.FullName() to be 'parent.a', got '%s'", s.A.FullName(""))
+		}
+		if s.B.FullName("") != "parent.b" {
+			t.Errorf("Expected B.FullName() to be 'parent.b', got '%s'", s.B.FullName(""))
+		}
+
+		path := s.A.Path()
+		if len(path) != 2 || path[0] != "parent" || path[1] != "a" {
+			t.Errorf("Expected A.Path() to be ['parent', 'a'], got %v", path)
+		}
+	})
+
+	// Test with multi-level parent path
+	t.Run("MultiLevelParent", func(t *testing.T) {
+		s := Inner{}
+		ok := LinkWithPath(&s, []string{"root", "middle", "parent"})
+		if !ok {
+			t.Fatal("LinkParent failed")
+		}
+
+		if s.A.Name() != "a" {
+			t.Errorf("Expected A.Name() to be 'a', got '%s'", s.A.Name())
+		}
+		if s.A.FullName("") != "root.middle.parent.a" {
+			t.Errorf("Expected A.FullName() to be 'root.middle.parent.a', got '%s'", s.A.FullName(""))
+		}
+		if s.B.FullName("/") != "root/middle/parent/b" {
+			t.Errorf("Expected B.FullName('/') to be 'root/middle/parent/b', got '%s'", s.B.FullName("/"))
+		}
+
+		path := s.B.Path()
+		if len(path) != 4 || path[0] != "root" || path[1] != "middle" || path[2] != "parent" || path[3] != "b" {
+			t.Errorf("Expected B.Path() to be ['root', 'middle', 'parent', 'b'], got %v", path)
+		}
+	})
+
+	// Test with nil parent path
+	t.Run("NilParentPath", func(t *testing.T) {
+		s := Inner{}
+		ok := LinkWithPath(&s, nil)
+		if !ok {
+			t.Fatal("LinkParent failed")
+		}
+
+		if s.A.Name() != "a" {
+			t.Errorf("Expected A.Name() to be 'a', got '%s'", s.A.Name())
+		}
+		if s.A.FullName("") != "a" {
+			t.Errorf("Expected A.FullName() to be 'a', got '%s'", s.A.FullName(""))
+		}
+	})
 }

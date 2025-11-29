@@ -19,11 +19,6 @@ type schema struct {
 
 var cachedSchemaMap = make(map[uintptr]*schema)
 
-// fieldHeader matches initial memory layout Field
-type fieldHeader struct {
-	path *[]string
-}
-
 // emptyInterface mimics the internal memory layout of a Go empty interface (any).
 // In the standard Go runtime, an interface is a pair of pointers: {type, data}.
 //
@@ -46,7 +41,7 @@ func LoadLink[T any](tagKey string) error {
 	}
 
 	// Get type ID for fast lookup
-	var gen any = zero
+	var gen any = (*T)(nil)
 	typeID := uintptr((*emptyInterface)(unsafe.Pointer(&gen)).typ)
 
 	// Build schema
@@ -73,8 +68,7 @@ func Link[T any](s *T) bool {
 
 	ptr := unsafe.Pointer(s)
 
-	var zero T
-	var gen any = zero
+	var gen any = (*T)(nil)
 	typeID := uintptr((*emptyInterface)(unsafe.Pointer(&gen)).typ)
 
 	// load from cache
@@ -88,8 +82,44 @@ func Link[T any](s *T) bool {
 
 	// link all Field[T] path pointers
 	for _, field := range sch.fields {
+		/*
+			fp := (*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset))
+			fp.path = field.pathPtr
+			fp.parentPath = nil
+		*/
 		(*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset)).path = field.pathPtr
 	}
+
+	return true
+}
+
+type fieldRefs struct {
+	paths       *[]string
+	parentPaths *[]string
+}
+
+//func (fr *fieldRefs) GetPaths() {
+
+func LinkWithPath[T any](s *T, path []string) bool {
+	ptr := unsafe.Pointer(s)
+
+	var gen any = (*T)(nil)
+	typeID := uintptr((*emptyInterface)(unsafe.Pointer(&gen)).typ)
+
+	// load from cache
+	sch, ok := cachedSchemaMap[typeID]
+	if !ok {
+		return false
+	}
+
+	// Note:
+	// breaking change: no longer tagkey is checked, assumes the schema is built with the correct tagkey
+
+	// link all Field[T] path pointers
+	for _, field := range sch.fields {
+		fp := (*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset))
+		fp.path = field.pathPtr
+		//fp.parentPath = &path	}
 
 	return true
 }
@@ -143,8 +173,8 @@ func collectFields(tVal reflect.Type, tagKey string, baseOffset uintptr, parentP
 				})
 
 				// Check if Value is a struct that might contain more Field[T] fields
-				if field.Type.NumField() >= 2 {
-					valueField := field.Type.Field(1) // Value is at index 1 (path=0, Value=1)
+				if field.Type.NumField() >= 3 {
+					valueField := field.Type.Field(2) // Value is at index 2 (path=0, parentPath=1, Value=2)
 					if valueField.Name == "Value" && valueField.Type.Kind() == reflect.Struct {
 						// Recursively collect fields from nested struct, passing current path
 						nestedBaseOffset := baseOffset + field.Offset + valueField.Offset

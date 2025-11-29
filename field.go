@@ -9,6 +9,16 @@ import (
 // basics
 // ################################
 
+type fielder interface {
+	Name() string
+	FullName(separator string) string
+	Path() []string
+	PathWithoutName() []string
+	NoName() bool
+	NoValue() bool
+	IsZero() bool
+}
+
 // fieldHeader must match with the initial layout of Field[T] and FieldSlice[T,E]
 type fieldHeader struct {
 	path       *[]string
@@ -86,8 +96,30 @@ func fieldFullNameOp(pathPtr, parentPathPtr *[]string, separator string) string 
 	return unsafe.String(unsafe.SliceData(buf), size)
 }
 
+func fieldPathWithoutNameOp(pathPtr *[]string) []string {
+	if pathPtr == nil || len(*pathPtr) == 0 {
+		return nil
+	}
+	return (*pathPtr)[:len(*pathPtr)-1]
+}
+
 func fieldNoNameOp(pathPtr *[]string) bool {
 	return pathPtr == nil || len(*pathPtr) == 0
+}
+
+// getCombinedPath combines parentPath and path into a single path
+func getCombinedPath(path, parent *[]string) []string {
+	if path == nil {
+		return nil
+	}
+	if parent == nil {
+		return *path
+	}
+	// Combine parentPath + path
+	combined := make([]string, len(*parent)+len(*path))
+	copy(combined, *parent)
+	copy(combined[len(*parent):], *path)
+	return combined
 }
 
 // ################################
@@ -99,6 +131,8 @@ type Field[T comparable] struct {
 	parentPath *[]string // second field, aligned with fieldHeader
 	Value      T
 }
+
+var _ fielder = (*Field[int])(nil) // check interface compliance
 
 // Name returns the leaf name of the field (last component of the path).
 func (f *Field[T]) Name() string {
@@ -118,28 +152,8 @@ func (f *Field[T]) Path() []string {
 	return getCombinedPath(f.path, f.parentPath)
 }
 
-// getCombinedPath combines parentPath and path into a single path
-func getCombinedPath(path, parent *[]string) []string {
-	if path == nil {
-		return nil
-	}
-	if parent == nil {
-		return *path
-	}
-	// Combine parentPath + path
-	combined := make([]string, len(*parent)+len(*path))
-	copy(combined, *parent)
-	copy(combined[len(*parent):], *path)
-	return combined
-}
-
-// ParentPath returns the runtime parent path if set.
-// Returns nil if no parent path was assigned during linking.
-func (f *Field[T]) ParentPath() []string {
-	if f.parentPath == nil {
-		return nil
-	}
-	return *f.parentPath
+func (f *Field[T]) PathWithoutName() []string {
+	return fieldPathWithoutNameOp(f.path)
 }
 
 func (f *Field[T]) NoName() bool {
@@ -187,6 +201,8 @@ type FieldSlice[T Slice[E], E any] struct {
 	Value      T
 }
 
+var _ fielder = (*FieldSlice[[]int, int])(nil) // check interface compliance
+
 // Name returns the leaf name of the field (last component of the path).
 func (f *FieldSlice[T, E]) Name() string {
 	return fieldNameOp(f.path)
@@ -205,13 +221,8 @@ func (f *FieldSlice[T, E]) Path() []string {
 	return getCombinedPath(f.path, f.parentPath)
 }
 
-// ParentPath returns the runtime parent path if set.
-// Returns nil if no parent path was assigned during linking.
-func (f *FieldSlice[T, E]) ParentPath() []string {
-	if f.parentPath == nil {
-		return nil
-	}
-	return *f.parentPath
+func (f *FieldSlice[T, E]) PathWithoutName() []string {
+	return fieldPathWithoutNameOp(f.path)
 }
 
 func (f *FieldSlice[T, E]) NoName() bool {

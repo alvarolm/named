@@ -1,6 +1,8 @@
 package named
 
-import "testing"
+import (
+	"testing"
+)
 
 type Sample5Fields struct {
 	A Field[int]     `json:"a"`
@@ -43,7 +45,7 @@ func BenchmarkLinkerWithPath_5Fields_2Levels(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s := Sample5Fields{}
-		LinkWithPath(&s, path)
+		LinkWithPath(&s, &path)
 	}
 }
 
@@ -53,7 +55,9 @@ func BenchmarkLinkerBasic_NameCall(b *testing.B) {
 		B Field[string]
 	}
 	s := MyStruct{}
+	LoadLink[MyStruct]("json")
 	Link(&s)
+	//b.Logf("Name(): %v", s.A.Name())
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = s.A.Name()
@@ -61,15 +65,20 @@ func BenchmarkLinkerBasic_NameCall(b *testing.B) {
 }
 
 func BenchmarkLinkerBasic_FullNameCall(b *testing.B) {
+	type Inner struct {
+		X Field[int]
+	}
 	type MyStruct struct {
 		A Field[int]
-		B Field[string]
+		B Field[Inner]
 	}
 	s := MyStruct{}
+	LoadLink[MyStruct]("json")
 	Link(&s)
+	//b.Logf("FullName(): %v", s.B.FullName("."))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = s.B.FullName(".")
+		_ = s.B.Value.X.FullName(".")
 	}
 }
 
@@ -79,7 +88,9 @@ func BenchmarkLinkerBasic_PathCall(b *testing.B) {
 		B Field[string]
 	}
 	s := MyStruct{}
+	LoadLink[MyStruct]("json")
 	Link(&s)
+	//b.Logf("Path(): %v", s.B.Path())
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = s.B.Path()
@@ -92,7 +103,10 @@ func BenchmarkLinkerWithPathBasic_FullNameCall(b *testing.B) {
 		B Field[string]
 	}
 	s := MyStruct{}
-	LinkWithPath(&s, []string{"level1", "level2"})
+	LoadLink[MyStruct]("json")
+	pp := []string{"level1"}
+	LinkWithPath(&s, &pp)
+	//b.Logf("FullName(): %v", s.B.FullName("."))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = s.B.FullName(".")
@@ -105,7 +119,10 @@ func BenchmarkLinkerWithPathBasic_PathCall(b *testing.B) {
 		B Field[string]
 	}
 	s := MyStruct{}
-	LinkWithPath(&s, []string{"level1", "level2"})
+	pp := []string{"level1"}
+	LoadLink[MyStruct]("json")
+	LinkWithPath(&s, &pp)
+	//b.Logf("Path(): %v", s.B.Path())
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = s.B.Path()

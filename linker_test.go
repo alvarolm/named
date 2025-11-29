@@ -339,7 +339,8 @@ func TestLinkWithPath(t *testing.T) {
 	// Test with empty parent path (should behave like Link)
 	t.Run("EmptyParentPath", func(t *testing.T) {
 		s := Inner{}
-		ok := LinkWithPath(&s, []string{})
+		emptyPath := []string{}
+		ok := LinkWithPath(&s, &emptyPath)
 		if !ok {
 			t.Fatal("LinkParent failed")
 		}
@@ -358,7 +359,8 @@ func TestLinkWithPath(t *testing.T) {
 	// Test with single-level parent path
 	t.Run("SingleLevelParent", func(t *testing.T) {
 		s := Inner{}
-		ok := LinkWithPath(&s, []string{"parent"})
+		parentPath := []string{"parent"}
+		ok := LinkWithPath(&s, &parentPath)
 		if !ok {
 			t.Fatal("LinkParent failed")
 		}
@@ -382,7 +384,8 @@ func TestLinkWithPath(t *testing.T) {
 	// Test with multi-level parent path
 	t.Run("MultiLevelParent", func(t *testing.T) {
 		s := Inner{}
-		ok := LinkWithPath(&s, []string{"root", "middle", "parent"})
+		parentPath := []string{"root", "middle", "parent"}
+		ok := LinkWithPath(&s, &parentPath)
 		if !ok {
 			t.Fatal("LinkParent failed")
 		}

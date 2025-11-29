@@ -2,7 +2,7 @@ package named
 
 import (
 	"encoding/json"
-	"strings"
+	"unsafe"
 )
 
 // ################################
@@ -24,29 +24,69 @@ var TextUnmarshaler = func(data []byte, v any) error {
 
 const DefaulyFullNameSeparator = "."
 
-func FieldNameOp(pathPtr *[]string) string {
+func fieldNameOp(pathPtr *[]string) string {
 	if pathPtr == nil || len(*pathPtr) == 0 {
 		return ""
 	}
 	return (*pathPtr)[len(*pathPtr)-1]
 }
 
-func FieldFullNameOp(pathPtr *[]string, separator string) string {
+func stringJoinRawSize(elems []string, sep string) int {
+	n := len(sep) * (len(elems) - 1)
+	for i := range elems {
+		n += len(elems[i])
+	}
+	return n
+}
+
+func fieldFullNameOp(pathPtr, parentPathPtr *[]string, separator string) string {
 
 	if separator == "" {
 		separator = DefaulyFullNameSeparator
 	}
-	return strings.Join(*pathPtr, separator)
-}
 
-func FieldPathOp(pathPtr *[]string) []string {
 	if pathPtr == nil {
-		return nil
+		return ""
 	}
-	return *pathPtr
+
+	if parentPathPtr == nil || len(*parentPathPtr) == 0 {
+
+		if len(*pathPtr) == 1 {
+			return (*pathPtr)[0]
+		}
+
+		n := stringJoinRawSize(*pathPtr, separator)
+
+		buf := make([]byte, 0, n)
+		buf = append(buf, (*pathPtr)[0]...)
+
+		for _, elem := range (*pathPtr)[1:] {
+			buf = append(buf, separator...)
+			buf = append(buf, elem...)
+		}
+
+		return unsafe.String(unsafe.SliceData(buf), n)
+	}
+
+	size := stringJoinRawSize(*parentPathPtr, separator) + len(separator) + stringJoinRawSize(*pathPtr, separator)
+
+	buf := make([]byte, 0, size)
+	buf = append(buf, (*parentPathPtr)[0]...)
+
+	for _, elem := range (*parentPathPtr)[1:] {
+		buf = append(buf, separator...)
+		buf = append(buf, elem...)
+	}
+
+	for _, elem := range *pathPtr {
+		buf = append(buf, separator...)
+		buf = append(buf, elem...)
+	}
+
+	return unsafe.String(unsafe.SliceData(buf), size)
 }
 
-func FieldNoNameOp(pathPtr *[]string) bool {
+func fieldNoNameOp(pathPtr *[]string) bool {
 	return pathPtr == nil || len(*pathPtr) == 0
 }
 
@@ -62,40 +102,35 @@ type Field[T comparable] struct {
 
 // Name returns the leaf name of the field (last component of the path).
 func (f *Field[T]) Name() string {
-	return FieldNameOp(f.path)
+	return fieldNameOp(f.path)
 }
 
 // FullName returns the full hierarchical path as a separated string.
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *Field[T]) FullName(separator string) string {
-	combinedPath := f.getCombinedPath()
-	if combinedPath == nil || len(*combinedPath) == 0 {
-		return ""
-	}
-	return FieldFullNameOp(combinedPath, separator)
+	return fieldFullNameOp(f.path, f.parentPath, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *Field[T]) Path() []string {
-	combinedPath := f.getCombinedPath()
-	return FieldPathOp(combinedPath)
+	return getCombinedPath(f.path, f.parentPath)
 }
 
 // getCombinedPath combines parentPath and path into a single path
-func (f *Field[T]) getCombinedPath() *[]string {
-	if f.parentPath == nil || len(*f.parentPath) == 0 {
-		return f.path
+func getCombinedPath(path, parent *[]string) []string {
+	if path == nil {
+		return nil
 	}
-	if f.path == nil || len(*f.path) == 0 {
-		return f.parentPath
+	if parent == nil {
+		return *path
 	}
 	// Combine parentPath + path
-	combined := make([]string, len(*f.parentPath)+len(*f.path))
-	copy(combined, *f.parentPath)
-	copy(combined[len(*f.parentPath):], *f.path)
-	return &combined
+	combined := make([]string, len(*parent)+len(*path))
+	copy(combined, *parent)
+	copy(combined[len(*parent):], *path)
+	return combined
 }
 
 // ParentPath returns the runtime parent path if set.
@@ -108,7 +143,7 @@ func (f *Field[T]) ParentPath() []string {
 }
 
 func (f *Field[T]) NoName() bool {
-	return FieldNoNameOp(f.path)
+	return fieldNoNameOp(f.path)
 }
 
 func (f *Field[T]) NoValue() bool {
@@ -154,40 +189,20 @@ type FieldSlice[T Slice[E], E any] struct {
 
 // Name returns the leaf name of the field (last component of the path).
 func (f *FieldSlice[T, E]) Name() string {
-	return FieldNameOp(f.path)
+	return fieldNameOp(f.path)
 }
 
 // FullName returns the full hierarchical path as a separated string.
 // If separator is empty, defaults to ".".
 // This provides backward compatibility for users who need the old Name() behavior.
 func (f *FieldSlice[T, E]) FullName(separator string) string {
-	combinedPath := f.getCombinedPath()
-	if combinedPath == nil || len(*combinedPath) == 0 {
-		return ""
-	}
-	return FieldFullNameOp(combinedPath, separator)
+	return fieldFullNameOp(f.path, f.parentPath, separator)
 }
 
 // Path returns the complete hierarchical path as a slice.
 // Returns nil if the field has no path information.
 func (f *FieldSlice[T, E]) Path() []string {
-	combinedPath := f.getCombinedPath()
-	return FieldPathOp(combinedPath)
-}
-
-// getCombinedPath combines parentPath and path into a single path
-func (f *FieldSlice[T, E]) getCombinedPath() *[]string {
-	if f.parentPath == nil || len(*f.parentPath) == 0 {
-		return f.path
-	}
-	if f.path == nil || len(*f.path) == 0 {
-		return f.parentPath
-	}
-	// Combine parentPath + path
-	combined := make([]string, len(*f.parentPath)+len(*f.path))
-	copy(combined, *f.parentPath)
-	copy(combined[len(*f.parentPath):], *f.path)
-	return &combined
+	return getCombinedPath(f.path, f.parentPath)
 }
 
 // ParentPath returns the runtime parent path if set.
@@ -200,7 +215,7 @@ func (f *FieldSlice[T, E]) ParentPath() []string {
 }
 
 func (f *FieldSlice[T, E]) NoName() bool {
-	return FieldNoNameOp(f.path)
+	return fieldNoNameOp(f.path)
 }
 
 func (f *FieldSlice[T, E]) NoValue() bool {

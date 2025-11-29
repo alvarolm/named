@@ -98,9 +98,7 @@ type fieldRefs struct {
 	parentPaths *[]string
 }
 
-//func (fr *fieldRefs) GetPaths() {
-
-func LinkWithPath[T any](s *T, path []string) bool {
+func LinkWithPath[T any](s *T, path *[]string) bool {
 	ptr := unsafe.Pointer(s)
 
 	var gen any = (*T)(nil)
@@ -119,8 +117,8 @@ func LinkWithPath[T any](s *T, path []string) bool {
 	for _, field := range sch.fields {
 		fp := (*fieldHeader)(unsafe.Pointer(uintptr(ptr) + field.offset))
 		fp.path = field.pathPtr
-		//fp.parentPath = &path	}
-
+		fp.parentPath = path
+	}
 	return true
 }
 

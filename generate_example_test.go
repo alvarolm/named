@@ -79,11 +79,3 @@ func TestGeneratedNamedWithActualStruct(t *testing.T) {
 		t.Errorf("Email(): expected %q, got %q", "email", got)
 	}
 }
-
-func BenchmarkGeneratedNamed(b *testing.B) {
-	n := PersonNamed
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = n.Name()
-	}
-}
